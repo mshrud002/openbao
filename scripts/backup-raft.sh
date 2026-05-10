@@ -3,7 +3,6 @@ set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
@@ -85,7 +84,7 @@ kubectl exec -n "$NAMESPACE" "$POD" -- \
   > "${OUTPUT_DIR}/${SNAPSHOT_FILE}"
 
 SIZE=$(stat -c%s "${OUTPUT_DIR}/${SNAPSHOT_FILE}" 2>/dev/null || stat -f%z "${OUTPUT_DIR}/${SNAPSHOT_FILE}" 2>/dev/null)
-log_ok "Snapshot saved: ${OUTPUT_DIR}/${SNAPSHOT_FILE} ($(numfmt --to=iec $SIZE 2>/dev/null || echo "$SIZE bytes"))"
+log_ok "Snapshot saved: ${OUTPUT_DIR}/${SNAPSHOT_FILE} ($(numfmt --to=iec "$SIZE" 2>/dev/null || echo "$SIZE bytes"))"
 
 if [[ -n "$S3_BUCKET" ]]; then
   if command -v aws &>/dev/null; then

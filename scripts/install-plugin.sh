@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -111,7 +108,7 @@ if [[ -n "$TOKEN_FILE" ]]; then
 fi
 
 if [[ -z "$BAO_TOKEN" ]]; then
-  local init_file="/tmp/openbao-init-${NAMESPACE}.json"
+  init_file="/tmp/openbao-init-${NAMESPACE}.json"
   if [[ -f "$init_file" ]]; then
     BAO_TOKEN=$(jq -r '.root_token' "$init_file")
     log_info "Using root token from $init_file"
@@ -208,10 +205,12 @@ mount_plugin() {
 
 verify_plugin() {
   log_info "Verifying plugin installation..."
-  kubectl exec -n "$NAMESPACE" "$POD" -- \
-    sh -c "BAO_TOKEN=$BAO_TOKEN bao plugin list $PLUGIN_TYPE" 2>/dev/null | grep -q "$PLUGIN_NAME" && \
-    log_ok "Plugin $PLUGIN_NAME verified in type $PLUGIN_TYPE" || \
+  if kubectl exec -n "$NAMESPACE" "$POD" -- \
+    sh -c "BAO_TOKEN=$BAO_TOKEN bao plugin list $PLUGIN_TYPE" 2>/dev/null | grep -q "$PLUGIN_NAME"; then
+    log_ok "Plugin $PLUGIN_NAME verified in type $PLUGIN_TYPE"
+  else
     log_warn "Plugin $PLUGIN_NAME not found in plugin list"
+  fi
 }
 
 main() {

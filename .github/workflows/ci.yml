@@ -31,17 +31,17 @@ jobs:
 
   terraform-validate:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: terraform
     steps:
       - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
       - run: |
           curl -sL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o /tmp/tf.zip
           sudo unzip -q -o /tmp/tf.zip -d /usr/local/bin && rm /tmp/tf.zip
       - run: terraform fmt -check -recursive || true
+        working-directory: terraform
       - run: terraform init -backend=false
+        working-directory: terraform
       - run: terraform validate
+        working-directory: terraform
 
   helm-plugin-test:
     runs-on: ubuntu-latest
