@@ -1,0 +1,63 @@
+{{- if .Values.server.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openbao.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+  {{- with .Values.server.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.server.service.type }}
+  {{- if .Values.server.service.clusterIP }}
+  clusterIP: {{ .Values.server.service.clusterIP }}
+  {{- end }}
+  {{- if .Values.server.service.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.server.service.loadBalancerIP }}
+  {{- end }}
+  {{- if .Values.server.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.server.service.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  ports:
+    - name: http
+      port: {{ .Values.server.service.port }}
+      targetPort: 8200
+      protocol: TCP
+    - name: cluster
+      port: {{ .Values.server.service.clusterPort }}
+      targetPort: 8201
+      protocol: TCP
+  selector:
+    {{- include "openbao.selectorLabels" . | nindent 4 }}
+---
+{{- if eq (include "openbao.mode" .) "ha" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openbao.internalServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+    - name: cluster
+      port: 8201
+      targetPort: 8201
+      protocol: TCP
+  selector:
+    {{- include "openbao.selectorLabels" . | nindent 4 }}
+{{- end }}
+{{- end }}

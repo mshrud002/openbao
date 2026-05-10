@@ -1,0 +1,14 @@
+apiVersion: v2
+name: openbao
+description: OpenBao deployment on Kubernetes with plugin support
+type: application
+version: 0.1.0
+appVersion: v2.5.2
+kubeVersion: ">= 1.27.0-0"
+home: https://openbao.org
+icon: https://raw.githubusercontent.com/openbao/artwork/main/color/openbao-color.svg
+sources:
+  - https://github.com/openbao/openbao
+maintainers:
+  - name: OpenBao Community
+    url: https://openbao.org

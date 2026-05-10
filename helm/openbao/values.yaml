@@ -1,0 +1,336 @@
+global:
+  enabled: true
+  namespace: ""
+  tlsDisable: true
+  openshift: false
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: ""
+  minAvailable: 1
+
+server:
+  enabled: "-"
+
+  image:
+    registry: quay.io
+    repository: openbao/openbao
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  imagePullSecrets: []
+
+  updateStrategyType: OnDelete
+  podManagementPolicy: OrderedReady
+  terminationGracePeriodSeconds: 30
+  hostNetwork: false
+  dnsConfig: {}
+
+  annotations: {}
+
+  configPath: /openbao/config
+
+  logLevel: info
+  logFormat: standard
+
+  apiAddr: ""
+  clusterAddr: ""
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  livenessProbe:
+    httpGet:
+      path: /v1/sys/health?standbyok=true
+      port: 8200
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /v1/sys/health?standbyok=true
+      port: 8200
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  startupProbe:
+    httpGet:
+      path: /v1/sys/health?standbyok=true
+      port: 8200
+      scheme: HTTP
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 12
+
+  extraArgs: ""
+  extraEnvironmentVars: []
+  extraEnvSecrets: []
+  extraVolumeMounts: []
+
+  openbaoUID: 100
+
+  preStopSleepSeconds: 5
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000
+
+  affinity: {}
+
+  topologySpreadConstraints: []
+
+  dev:
+    enabled: false
+    devRootToken: root
+
+  standalone:
+    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "file" {
+        path = "/openbao/data"
+      }
+
+      service_registration "kubernetes" {}
+
+      {{- if .Values.seal.awskms.enabled }}
+      seal "awskms" {
+        region     = "{{ .Values.seal.awskms.region }}"
+        kms_key_id = "{{ .Values.seal.awskms.kms_key_id }}"
+      }
+      {{- end }}
+
+  ha:
+    enabled: false
+    replicas: 3
+    antiAffinity: true
+
+    raft:
+      enabled: true
+      setNodeId: true
+      snapshotThreshold: 8192
+      snapshotInterval: "30s"
+
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable     = 1
+          address         = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+
+        storage "raft" {
+          path = "/openbao/data"
+          node_id = "NODE_ID_PLACEHOLDER"
+          snapshot_threshold = {{ .Values.server.ha.raft.snapshotThreshold }}
+          snapshot_interval = "{{ .Values.server.ha.raft.snapshotInterval }}"
+          {{- range $i := until (int .Values.server.ha.replicas) }}
+          retry_join {
+            leader_api_addr = "http://{{ $.Release.Name }}-{{ $i }}.{{ $.Release.Name }}-internal:8200"
+          }
+          {{- end }}
+        }
+
+        service_registration "kubernetes" {}
+
+        telemetry {
+          prometheus_retention_time      = "24h"
+          unauthenticated_metrics_access = true
+        }
+
+        plugin_directory = "/vault/plugins"
+
+        {{- if .Values.seal.awskms.enabled }}
+        seal "awskms" {
+          region     = "{{ .Values.seal.awskms.region }}"
+          kms_key_id = "{{ .Values.seal.awskms.kms_key_id }}"
+          {{- if .Values.seal.awskms.endpoint }}
+          endpoint   = "{{ .Values.seal.awskms.endpoint }}"
+          {{- end }}
+        }
+        {{- end }}
+
+        audit "file" "file_log" {
+          description = "File-based audit log for OpenBao"
+
+          options = {
+            file_path = "/vault/logs/audit.log"
+            log_raw   = "false"
+          }
+        }
+
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+  auditStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8200
+    clusterPort: 8201
+    clusterIP: ""
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    annotations: {}
+
+  ingress:
+    enabled: false
+    ingressClassName: ""
+    annotations: {}
+    activeService: true
+    hosts:
+      - host: openbao.local
+        paths:
+          - "/*"
+    tls: []
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    relabelings: []
+
+ui:
+  enabled: true
+
+injector:
+  enabled: false
+  image:
+    registry: quay.io
+    repository: openbao/openbao
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources: {}
+
+plugins:
+  extra: {}
+  #   my-plugin: <base64-encoded-binary-or-path>
+
+  community:
+    enabled: false
+
+    baseURL: "https://github.com/openbao/openbao-plugins/releases/download"
+    arch: "linux_amd64_v1"
+
+    auth:
+      aws:
+        enabled: false
+        version: v0.1.1
+        sha256: ""
+      azure:
+        enabled: false
+        version: v0.23.0
+        sha256: ""
+      gcp:
+        enabled: false
+        version: v0.22.0
+        sha256: ""
+      github:
+        enabled: false
+        version: v0.0.1
+        sha256: ""
+
+    secrets:
+      aws:
+        enabled: false
+        version: v0.2.0
+        sha256: ""
+      azure:
+        enabled: false
+        version: v0.23.0
+        sha256: ""
+      gcp:
+        enabled: false
+        version: v0.23.0
+        sha256: ""
+      gcpkms:
+        enabled: false
+        version: v0.21.0
+        sha256: ""
+      nomad:
+        enabled: false
+        version: v0.1.5
+        sha256: ""
+      consul:
+        enabled: false
+        version: v0.1.0
+        sha256: ""
+
+  image:
+    enabled: false
+    repository: ""
+    tag: latest
+    pullPolicy: IfNotPresent
+    volumeMounts: []
+
+  sidecar:
+    enabled: false
+    image:
+      repository: ""
+      tag: latest
+      pullPolicy: IfNotPresent
+    command: []
+    extraEnv: []
+    extraVolumeMounts: []
+    resources: {}
+
+seal:
+  awskms:
+    enabled: true
+    region: eu-west-1
+    kms_key_id: alias/openbao-unseal-prod
+    endpoint: ""
+    irsaRoleArn: ""
+
+  extraEnvironmentVars: []
+  # - name: AWS_ACCESS_KEY_ID
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: aws-creds
+  #       key: access-key
+  # - name: AWS_SECRET_ACCESS_KEY
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: aws-creds
+  #       key: secret-key

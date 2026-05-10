@@ -1,0 +1,13 @@
+{{- if .Values.plugins.extra }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openbao.fullname" . }}-plugins
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+data:
+  {{- range $name, $binary := .Values.plugins.extra }}
+  {{ $name }}: {{ $binary | quote }}
+  {{- end }}
+{{- end }}

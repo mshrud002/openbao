@@ -1,0 +1,24 @@
+namespace = "openbao"
+mode      = "ha"
+
+# OpenBao configuration
+values = {
+  server = {
+    image = {
+      tag = "v2.5.2"
+    }
+    resources = {
+      requests = {
+        memory = "512Mi"
+        cpu    = "500m"
+      }
+      limits = {
+        memory = "1Gi"
+        cpu    = "1"
+      }
+    }
+  }
+}
+
+# Ingress
+ingress_enabled = false

@@ -1,0 +1,114 @@
+{{- if .Values.injector.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-injector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    component: agent-injector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "openbao.selectorLabels" . | nindent 6 }}
+      component: agent-injector
+  template:
+    metadata:
+      labels:
+        {{- include "openbao.selectorLabels" . | nindent 8 }}
+        component: agent-injector
+      annotations:
+        {{- with .Values.server.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "openbao.fullname" . }}-agent-injector
+      containers:
+        - name: agent-injector
+          image: {{ .Values.injector.image.registry }}/{{ .Values.injector.image.repository }}:{{ .Values.injector.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.injector.image.pullPolicy }}
+          command:
+            - bao-k8s-agent-injector
+          args:
+            - -address={{ include "openbao.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:8200
+            - -tls-skip-verify=true
+            - -log-level={{ .Values.server.logLevel | default "info" }}
+          env:
+            - name: BAO_ADDR
+              value: http://{{ include "openbao.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:8200
+            - name: BAO_SKIP_VERIFY
+              value: "true"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: webhook
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.injector.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-injector-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    component: agent-injector
+spec:
+  type: ClusterIP
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    {{- include "openbao.selectorLabels" . | nindent 4 }}
+    component: agent-injector
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-injector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    component: agent-injector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-injector
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    component: agent-injector
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "patch", "update", "create"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-injector
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    component: agent-injector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "openbao.fullname" . }}-agent-injector
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openbao.fullname" . }}-agent-injector
+    namespace: {{ .Release.Namespace }}
+{{- end }}

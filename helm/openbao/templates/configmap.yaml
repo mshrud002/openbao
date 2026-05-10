@@ -1,0 +1,23 @@
+{{- $mode := include "openbao.mode" . }}
+{{- $config := "" }}
+{{- if eq $mode "ha" }}
+  {{- if .Values.server.ha.raft.enabled }}
+    {{- $config = tpl .Values.server.ha.raft.config . }}
+  {{- else }}
+    {{- $config = tpl .Values.server.ha.config . }}
+  {{- end }}
+{{- else if eq $mode "standalone" }}
+  {{- $config = tpl .Values.server.standalone.config . }}
+{{- else if eq $mode "dev" }}
+  {{- $config = "" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openbao.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+data:
+  openbao.hcl: |
+{{ $config | default "# no config" | indent 4 }}

@@ -1,0 +1,340 @@
+{{- $mode := include "openbao.mode" . }}
+{{- if and (ne $mode "dev") (ne $mode "external") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "openbao.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "openbao.internalServiceName" . }}
+  {{- if eq $mode "ha" }}
+  replicas: {{ .Values.server.ha.replicas }}
+  {{- else }}
+  replicas: 1
+  {{- end }}
+  podManagementPolicy: {{ .Values.server.podManagementPolicy }}
+  updateStrategy:
+    type: {{ .Values.server.updateStrategyType }}
+  selector:
+    matchLabels:
+      {{- include "openbao.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openbao.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- with .Values.server.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- if .Values.server.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.server.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "openbao.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
+      {{- if .Values.server.hostNetwork }}
+      hostNetwork: {{ .Values.server.hostNetwork }}
+      {{- end }}
+      {{- if .Values.server.dnsConfig }}
+      dnsConfig:
+        {{- toYaml .Values.server.dnsConfig | nindent 8 }}
+      {{- end }}
+      {{- if .Values.server.securityContext }}
+      securityContext:
+        {{- toYaml .Values.server.securityContext | nindent 8 }}
+      {{- end }}
+
+      {{- if or .Values.server.affinity (and (eq $mode "ha") .Values.server.ha.antiAffinity) }}
+      affinity:
+        {{- if .Values.server.affinity }}
+        {{- toYaml .Values.server.affinity | nindent 8 }}
+        {{- end }}
+        {{- if and (eq $mode "ha") .Values.server.ha.antiAffinity }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "openbao.selectorLabels" . | nindent 20 }}
+                topologyKey: topology.kubernetes.io/zone
+            - weight: 50
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "openbao.selectorLabels" . | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.server.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.server.topologySpreadConstraints | nindent 8 }}
+      {{- end }}
+
+      {{- $hasCustomPlugins := or .Values.plugins.extra (and .Values.plugins.image.enabled .Values.plugins.image.repository) }}
+      {{- $hasCommunityPlugins := .Values.plugins.community.enabled }}
+      {{- $hasPlugins := or $hasCustomPlugins $hasCommunityPlugins }}
+      {{- $openbaoUID := .Values.server.openbaoUID | default 100 }}
+      {{- if $hasPlugins }}
+      initContainers:
+        {{- if .Values.plugins.extra }}
+        - name: plugin-copy
+          image: {{ .Values.server.image.registry }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /vault/plugins
+              for f in /plugin-binaries/*; do
+                if [ -f "$f" ]; then
+                  cp "$f" /vault/plugins/
+                  chmod 755 "/vault/plugins/$(basename "$f")"
+                  echo "installed plugin: $(basename "$f")"
+                fi
+              done
+              chown -R {{ $openbaoUID }}:{{ $openbaoUID }} /vault/plugins
+          volumeMounts:
+            - name: plugins
+              mountPath: /vault/plugins
+            - name: plugin-binaries
+              mountPath: /plugin-binaries
+        {{- end }}
+        {{- if and .Values.plugins.image.enabled .Values.plugins.image.repository }}
+        - name: plugin-image
+          image: {{ .Values.plugins.image.repository }}:{{ .Values.plugins.image.tag }}
+          imagePullPolicy: {{ .Values.plugins.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /vault/plugins
+              ls -la /custom-plugins/ && cp /custom-plugins/* /vault/plugins/ 2>/dev/null || true
+              chown -R {{ $openbaoUID }}:{{ $openbaoUID }} /vault/plugins
+              echo "plugins from image installed"
+          volumeMounts:
+            - name: plugins
+              mountPath: /vault/plugins
+          {{- if .Values.plugins.image.volumeMounts }}
+          {{- toYaml .Values.plugins.image.volumeMounts | nindent 10 }}
+          {{- end }}
+        {{- end }}
+        {{- if $hasCommunityPlugins }}
+        - name: plugin-download
+          image: curlimages/curl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /vault/plugins
+              cd /vault/plugins
+              BASE_URL="{{ .Values.plugins.community.baseURL }}"
+              ARCH="{{ .Values.plugins.community.arch }}"
+              download_plugin() {
+                local type="$1" name="$2" ver="$3"
+                local url="${BASE_URL}/${type}-${name}-${ver}/openbao-plugin-${type}-${name}_${ARCH}.tar.gz"
+                echo "Downloading ${type}/${name} v${ver}..."
+                if command -v wget &>/dev/null; then
+                  wget -q -O - "$url" | tar xzf -
+                else
+                  curl -sL "$url" | tar xzf -
+                fi
+                local binary="openbao-plugin-${type}-${name}"
+                if [ -f "$binary" ]; then
+                  chmod 755 "$binary"
+                  echo "  ${type}/${name} installed ($(stat -c%s "$binary" 2>/dev/null || stat -f%z "$binary" 2>/dev/null) bytes)"
+                else
+                  echo "  WARNING: $binary not found after extraction"
+                fi
+              }
+              {{- range $name, $cfg := .Values.plugins.community.auth }}
+              {{- if $cfg.enabled }}
+              download_plugin "auth" "{{ $name }}" "{{ $cfg.version }}"
+              {{- end }}
+              {{- end }}
+              {{- range $name, $cfg := .Values.plugins.community.secrets }}
+              {{- if $cfg.enabled }}
+              download_plugin "secret" "{{ $name }}" "{{ $cfg.version }}"
+              {{- end }}
+              {{- end }}
+              chown -R {{ $openbaoUID }}:{{ $openbaoUID }} /vault/plugins
+              echo "" && echo "=== Plugin binaries ===" && ls -la /vault/plugins/
+          volumeMounts:
+            - name: plugins
+              mountPath: /vault/plugins
+        {{- end }}
+      {{- end }}
+
+      containers:
+        - name: openbao
+          image: {{ .Values.server.image.registry }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command:
+            - "/bin/sh"
+            - "-ec"
+            - |
+              cp {{ .Values.server.configPath }}/openbao.hcl /tmp/openbao.hcl
+              {{- if eq $mode "ha" }}
+              sed -i "s/NODE_ID_PLACEHOLDER/${POD_NAME}/g" /tmp/openbao.hcl
+              {{- end }}
+              exec bao server \
+                -config=/tmp/openbao.hcl \
+                -log-level={{ .Values.server.logLevel | default "info" }} \
+                {{- if eq $mode "dev" }}
+                -dev \
+                -dev-listen-address=0.0.0.0:8200 \
+                -dev-root-token-id={{ .Values.server.dev.devRootToken }} \
+                {{- end }}
+                {{- if .Values.server.extraArgs }}
+                {{ .Values.server.extraArgs }}
+                {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -ec
+                  - |
+                    sleep {{ .Values.server.preStopSleepSeconds | default 5 }}
+                    bao step-down || true
+          env:
+            - name: BAO_ADDR
+              value: "http://127.0.0.1:8200"
+            - name: BAO_API_ADDR
+              value: {{ .Values.server.apiAddr | default "http://$(POD_IP):8200" | quote }}
+            - name: BAO_CLUSTER_ADDR
+              value: {{ .Values.server.clusterAddr | default "https://$(POD_IP):8201" | quote }}
+            - name: BAO_LOG_FORMAT
+              value: {{ .Values.server.logFormat | default "standard" }}
+            - name: BAO_SKIP_CHOWN
+              value: "true"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if eq $mode "ha" }}
+            - name: BAO_HA_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if .Values.server.extraEnvironmentVars }}
+            {{- toYaml .Values.server.extraEnvironmentVars | nindent 12 }}
+            {{- end }}
+            {{- if .Values.seal.extraEnvironmentVars }}
+            {{- toYaml .Values.seal.extraEnvironmentVars | nindent 12 }}
+            {{- end }}
+          envFrom:
+            {{- with .Values.server.extraEnvSecrets }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8200
+              protocol: TCP
+            - name: cluster
+              containerPort: 8201
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.server.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.server.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.server.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: {{ .Values.server.configPath }}
+            {{- if $hasPlugins }}
+            - name: plugins
+              mountPath: /vault/plugins
+            {{- end }}
+            - name: data
+              mountPath: /openbao/data
+            {{- if .Values.server.auditStorage.enabled }}
+            - name: audit
+              mountPath: /vault/logs
+            {{- end }}
+            {{- if .Values.server.extraVolumeMounts }}
+            {{- toYaml .Values.server.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+
+        {{- if .Values.plugins.sidecar.enabled }}
+        - name: plugin-sidecar
+          image: {{ .Values.plugins.sidecar.image.repository }}:{{ .Values.plugins.sidecar.image.tag }}
+          imagePullPolicy: {{ .Values.plugins.sidecar.image.pullPolicy }}
+          {{- with .Values.plugins.sidecar.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: BAO_ADDR
+              value: "http://127.0.0.1:8200"
+            {{- with .Values.plugins.sidecar.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: plugins
+              mountPath: /vault/plugins
+            {{- with .Values.plugins.sidecar.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.plugins.sidecar.resources | nindent 12 }}
+        {{- end }}
+
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "openbao.fullname" . }}-config
+        {{- if .Values.plugins.extra }}
+        - name: plugin-binaries
+          configMap:
+            name: {{ include "openbao.fullname" . }}-plugins
+            defaultMode: 0755
+        {{- end }}
+        {{- if $hasPlugins }}
+        - name: plugins
+          emptyDir: {}
+        {{- end }}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.server.dataStorage.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.server.dataStorage.size }}
+        {{- if .Values.server.dataStorage.storageClass }}
+        storageClassName: {{ .Values.server.dataStorage.storageClass }}
+        {{- end }}
+    {{- if .Values.server.auditStorage.enabled }}
+    - metadata:
+        name: audit
+      spec:
+        accessModes:
+          - {{ .Values.server.auditStorage.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.server.auditStorage.size }}
+        {{- if .Values.server.auditStorage.storageClass }}
+        storageClassName: {{ .Values.server.auditStorage.storageClass }}
+        {{- end }}
+    {{- end }}
+{{- end }}
