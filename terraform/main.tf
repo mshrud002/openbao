@@ -9,10 +9,6 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = ">= 2.25"
     }
-    openbao = {
-      source  = "openbao/openbao"
-      version = ">= 0.1.0"
-    }
   }
 }
 

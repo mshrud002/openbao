@@ -1,3 +1,20 @@
+terraform {
+  required_providers {
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.12"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.25"
+    }
+    openbao = {
+      source  = "openbao/openbao"
+      version = ">= 0.1.0"
+    }
+  }
+}
+
 provider "helm" {
   kubernetes {
     config_path = "~/.kube/config"
