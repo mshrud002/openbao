@@ -42,7 +42,7 @@ locals {
   )
 }
 
-resource "kubernetes_namespace" "openbao" {
+resource "kubernetes_namespace_v1" "openbao" {
   count = var.create_namespace ? 1 : 0
   metadata {
     name = var.namespace
@@ -63,15 +63,9 @@ resource "helm_release" "openbao" {
   wait       = true
   timeout    = 600
 
-  depends_on = [kubernetes_namespace.openbao]
+  depends_on = [kubernetes_namespace_v1.openbao]
 
-  dynamic "set" {
-    for_each = local.helm_values
-    content {
-      name  = set.key
-      value = set.value
-    }
-  }
+  values = [yamlencode(local.helm_values)]
 }
 
 data "kubernetes_service" "openbao" {
