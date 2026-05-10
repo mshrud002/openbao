@@ -7,30 +7,30 @@ on:
 
 permissions:
   contents: write
-  pages: write
+
+env:
+  HELM_VERSION: v3.17.2
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
 
-      - uses: azure/setup-helm@v4
-        with:
-          version: latest
+      - run: curl -sL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
 
-      - name: Package Helm chart
+      - name: Package chart
         run: |
+          mkdir -p .dist
           helm package helm/openbao/ --destination .dist/
+          helm repo index .dist/ --url "https://${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}"
 
-      - name: Generate index.yaml
+      - name: Create Release
         run: |
-          helm repo index .dist/ --url https://github.com/mshrud002/openbao/releases/download/${GITHUB_REF_NAME}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            .dist/*.tgz
-            .dist/index.yaml
-          generate_release_notes: true
+          gh release create "${{ github.ref_name }}" \
+            .dist/*.tgz .dist/index.yaml \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

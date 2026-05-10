@@ -7,39 +7,29 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  HELM_VERSION: v3.17.2
+  TERRAFORM_VERSION: 1.11.4
+
 jobs:
   helm-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: azure/setup-helm@v4
-        with:
-          version: latest
-
-      - name: Lint Helm chart
-        run: helm lint helm/openbao/
-
-      - name: Template all modes
-        run: |
-          helm template ci-test helm/openbao/ \
-            --namespace ci --kube-version 1.28.0 \
-            --set server.standalone.enabled=true
-          helm template ci-test helm/openbao/ \
-            --namespace ci --kube-version 1.28.0 \
-            --set server.ha.enabled=true \
-            --set server.standalone.enabled=false
+      - name: Checkout
+        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: curl -sL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
+      - run: helm lint helm/openbao/
+      - run: |
+          helm template ci-test helm/openbao/ --namespace ci --kube-version 1.28.0 --set server.standalone.enabled=true
+          helm template ci-test helm/openbao/ --namespace ci --kube-version 1.28.0 --set server.ha.enabled=true --set server.standalone.enabled=false
 
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: ShellCheck bash scripts
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: ./scripts
-          format: gcc
+      - name: Checkout
+        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+      - run: shellcheck scripts/*.sh
 
   terraform-validate:
     runs-on: ubuntu-latest
@@ -47,36 +37,24 @@ jobs:
       run:
         working-directory: terraform
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: latest
-
-      - name: Terraform fmt
-        run: terraform fmt -check -recursive
-        continue-on-error: true
-
-      - name: Terraform init (backend=false for validation)
-        run: terraform init -backend=false
-
-      - name: Terraform validate
-        run: terraform validate
+      - name: Checkout
+        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: |
+          curl -sL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o /tmp/tf.zip
+          sudo unzip -q -o /tmp/tf.zip -d /usr/local/bin && rm /tmp/tf.zip
+      - run: terraform fmt -check -recursive || true
+      - run: terraform init -backend=false
+      - run: terraform validate
 
   helm-plugin-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: azure/setup-helm@v4
-        with:
-          version: latest
-
-      - name: Template with all community plugins
-        run: |
+      - name: Checkout
+        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: curl -sL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
+      - run: |
           helm template ci-test helm/openbao/ --namespace ci --kube-version 1.28.0 \
-            --set server.ha.enabled=true \
-            --set server.standalone.enabled=false \
+            --set server.ha.enabled=true --set server.standalone.enabled=false \
             --set plugins.community.enabled=true \
             --set plugins.community.auth.aws.enabled=true \
             --set plugins.community.auth.azure.enabled=true \
