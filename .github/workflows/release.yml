@@ -15,8 +15,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
 
       - run: curl -sL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
 
@@ -24,7 +23,7 @@ jobs:
         run: |
           mkdir -p .dist
           helm package helm/openbao/ --destination .dist/
-          helm repo index .dist/ --url "https://${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          helm repo index .dist/ --url "https://${{ github.repository }}/releases/download/${{ github.ref_name }}"
 
       - name: Create Release
         run: |

@@ -15,8 +15,7 @@ jobs:
   helm-lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
       - run: curl -sL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
       - run: helm lint helm/openbao/
       - run: |
@@ -26,8 +25,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - run: shellcheck scripts/*.sh
 
@@ -37,8 +35,7 @@ jobs:
       run:
         working-directory: terraform
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
       - run: |
           curl -sL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o /tmp/tf.zip
           sudo unzip -q -o /tmp/tf.zip -d /usr/local/bin && rm /tmp/tf.zip
@@ -49,8 +46,7 @@ jobs:
   helm-plugin-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
       - run: curl -sL https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
       - run: |
           helm template ci-test helm/openbao/ --namespace ci --kube-version 1.28.0 \

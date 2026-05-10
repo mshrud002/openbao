@@ -49,32 +49,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'dev' }}
     steps:
-      - name: Checkout
-        run: git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${{ github.server_url }}/${{ github.repository }}.git .
+      - run: git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@${GITHUB_SERVER_URL#https://}/${{ github.repository }}.git" .
 
       - name: Install tools
         run: |
-          # AWS CLI v2 (should be pre-installed, but ensure)
           aws --version
-
-          # Helm
           curl -sL https://get.helm.sh/helm-v3.17.2-linux-amd64.tar.gz \
             | tar xz --strip-components=1 -C /usr/local/bin linux-amd64/helm
           helm version
-
-          # kubectl
           curl -sL https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl \
             -o /usr/local/bin/kubectl
           chmod 755 /usr/local/bin/kubectl
           kubectl version --client
 
       - name: Authenticate to AWS via OIDC and deploy
-        env:
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
-          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
         run: |
-          # OIDC role ARN is per-environment, stored as GitHub secrets
-          # OIDC_ROLE_ARN = arn:aws:iam::<ACCOUNT>:role/github-oidc-<env>
           chmod +x scripts/eks-oidc-auth.sh
           ./scripts/eks-oidc-auth.sh \
             --role-arn "${{ secrets.OIDC_ROLE_ARN }}" \
@@ -83,7 +72,6 @@ jobs:
             --namespace "openbao-${{ github.event.inputs.environment || 'dev' }}" \
             --install
 
-      # Optional: init and unseal after first deploy
       - name: Initialize and unseal
         if: ${{ github.event.inputs.init_unseal == 'true' }}
         run: |
