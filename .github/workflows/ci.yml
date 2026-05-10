@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["README.md"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: Lint Helm chart
+        run: helm lint helm/openbao/
+
+      - name: Template all modes
+        run: |
+          helm template ci-test helm/openbao/ \
+            --namespace ci --kube-version 1.28.0 \
+            --set server.standalone.enabled=true
+          helm template ci-test helm/openbao/ \
+            --namespace ci --kube-version 1.28.0 \
+            --set server.ha.enabled=true \
+            --set server.standalone.enabled=false
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck bash scripts
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: ./scripts
+          format: gcc
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: latest
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform init (backend=false for validation)
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+  helm-plugin-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: Template with all community plugins
+        run: |
+          helm template ci-test helm/openbao/ --namespace ci --kube-version 1.28.0 \
+            --set server.ha.enabled=true \
+            --set server.standalone.enabled=false \
+            --set plugins.community.enabled=true \
+            --set plugins.community.auth.aws.enabled=true \
+            --set plugins.community.auth.azure.enabled=true \
+            --set plugins.community.auth.gcp.enabled=true \
+            --set plugins.community.auth.github.enabled=true \
+            --set plugins.community.secrets.aws.enabled=true \
+            --set plugins.community.secrets.azure.enabled=true \
+            --set plugins.community.secrets.gcp.enabled=true \
+            --set plugins.community.secrets.gcpkms.enabled=true \
+            --set plugins.community.secrets.nomad.enabled=true \
+            --set plugins.community.secrets.consul.enabled=true \
+            --set monitoring.serviceMonitor.enabled=true \
+            --set injector.enabled=true \
+            | grep -q "download_plugin" && echo "Plugin init container OK"

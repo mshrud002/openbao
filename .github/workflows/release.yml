@@ -1,0 +1,36 @@
+name: Release Helm Chart
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: Package Helm chart
+        run: |
+          helm package helm/openbao/ --destination .dist/
+
+      - name: Generate index.yaml
+        run: |
+          helm repo index .dist/ --url https://github.com/mshrud002/openbao/releases/download/${GITHUB_REF_NAME}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .dist/*.tgz
+            .dist/index.yaml
+          generate_release_notes: true
