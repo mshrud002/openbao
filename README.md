@@ -113,26 +113,52 @@ An init container downloads the plugin tarballs from GitHub Releases, extracts t
   --secrets-plugins aws,consul
 ```
 
-## KMS Auto-Unseal
+## Configuration: Terraform-Driven, No Hardcoded Values
 
-The chart supports AWS KMS auto-unseal with IRSA.
+The chart defaults are intentionally empty — no hardcoded regions, KMS keys, or IRSA roles.
+All environment-specific values should be injected by Terraform or your config management.
 
-### values.yaml
+### Recommended: Terraform injects KMS + IRSA
 
-```yaml
-seal:
-  awskms:
-    enabled: true
-    region: eu-west-1
-    kms_key_id: alias/openbao-unseal-prod
-    irsaRoleArn: arn:aws:iam::123456:role/openbao-kms
+```hcl
+module "openbao" {
+  source = "../../terraform"
+
+  seal = {
+    type         = "awskms"
+    region       = "eu-west-1"
+    kms_key_id   = aws_kms_key.openbao.key_id
+    irsa_role_arn = aws_iam_role.openbao_irsa.arn
+  }
+
+  values = {
+    seal = {
+      awskms = {
+        enabled     = true
+        region      = "eu-west-1"
+        kms_key_id  = "alias/openbao-unseal"
+        irsaRoleArn = "arn:aws:iam::123456789012:role/openbao-kms"
+      }
+    }
+  }
+}
 ```
 
-### IRSA (IAM Roles for Service Accounts)
+### Helm only (manual)
 
-When `seal.awskms.irsaRoleArn` is set, the chart automatically adds `eks.amazonaws.com/role-arn` annotation to the OpenBao ServiceAccount.
+```bash
+helm install openbao ./helm/openbao \
+  --set seal.awskms.enabled=true \
+  --set seal.awskms.region=eu-west-1 \
+  --set seal.awskms.kms_key_id=alias/openbao-unseal \
+  --set seal.awskms.irsaRoleArn=arn:aws:iam::123456789012:role/openbao-kms
+```
 
-### Direct AWS Credentials
+### IRSA
+
+When `seal.awskms.irsaRoleArn` is set, the chart adds `eks.amazonaws.com/role-arn` to the ServiceAccount.
+
+### Direct AWS Credentials (alternative to IRSA)
 
 ```yaml
 seal:
@@ -191,7 +217,11 @@ Two services are created:
 | 4 | **Script** | `install-plugin.sh` for runtime upload, register, mount |
 | 5 | **Terraform** | `openbao_plugin` + `openbao_mount` resources |
 
-## Ingress (ALB)
+## Ingress
+
+Defaults to external (internet-facing). Change to `internal` for corporate deployments.
+
+### External (default for this chart)
 
 ```yaml
 server:
@@ -199,22 +229,27 @@ server:
     enabled: true
     ingressClassName: alb
     annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:...:certificate/..."
+```
+
+### Internal (corporate)
+
+```yaml
+server:
+  ingress:
+    enabled: true
+    ingressClassName: alb          # or nginx
+    annotations:
       alb.ingress.kubernetes.io/scheme: internal
       alb.ingress.kubernetes.io/target-type: ip
       alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:...:certificate/..."
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
-      alb.ingress.kubernetes.io/ssl-redirect: "443"
-    hosts:
-      - host: openbao.example.com
-        paths:
-          - "/*"
-    tls:
-      - hosts:
-          - openbao.example.com
-        secretName: openbao-tls
 ```
 
 ## Full Configuration Example
+
+Values are injected from Terraform or your config — nothing is hardcoded.
 
 ```yaml
 server:
@@ -226,13 +261,13 @@ server:
       setNodeId: true
   dataStorage:
     size: 10Gi
-    storageClass: gp3
+    storageClass: gp3              # set by Terraform (aws_ebs_volume)
   auditStorage:
     size: 10Gi
     storageClass: gp3
   ingress:
     enabled: true
-    ingressClassName: alb
+    ingressClassName: alb          # external by default; change to internal for corporate
 
 plugins:
   community:
@@ -241,21 +276,18 @@ plugins:
       aws:   { enabled: true }
       azure: { enabled: true }
       gcp:   { enabled: true }
-      github:{ enabled: true }
     secrets:
       aws:   { enabled: true }
       azure: { enabled: true }
       gcp:   { enabled: true }
-      gcpkms:{ enabled: true }
       nomad: { enabled: true }
-      consul:{ enabled: true }
 
 seal:
   awskms:
-    enabled: true
-    region: eu-west-1
-    kms_key_id: alias/openbao-unseal-prod
-    irsaRoleArn: arn:aws:iam::123456:role/openbao-kms
+    enabled: true                  # set to true only when region + kms_key_id are provided
+    region: ""                     # injected from Terraform (var.seal.region)
+    kms_key_id: ""                 # injected from Terraform (aws_kms_key.openbao.key_id)
+    irsaRoleArn: ""                # injected from Terraform (aws_iam_role.openbao_irsa.arn)
 
 ui:
   enabled: true

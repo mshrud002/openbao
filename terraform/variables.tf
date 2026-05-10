@@ -85,10 +85,28 @@ variable "ingress_enabled" {
 variable "ingress_config" {
   description = "Ingress configuration"
   type = object({
-    host        = optional(string, "openbao.local")
+    host        = optional(string, "bao.example.com")
     annotations = optional(map(string), {})
     tls_enabled = optional(bool, false)
     tls_secret  = optional(string, "")
   })
   default = {}
+}
+
+variable "seal" {
+  description = "KMS auto-unseal configuration"
+  type = object({
+    type         = optional(string, "awskms")
+    region       = optional(string, "")
+    kms_key_id   = optional(string, "")
+    endpoint     = optional(string, "")
+    irsa_role_arn = optional(string, "")
+  })
+  default = {}
+}
+
+variable "service_account_annotations" {
+  description = "Additional annotations for the OpenBao service account (e.g. IRSA)"
+  type        = map(string)
+  default     = {}
 }

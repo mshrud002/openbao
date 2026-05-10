@@ -33,6 +33,20 @@ output "openbao_addr_external" {
   value       = var.ingress_enabled ? "https://${var.ingress_config.host}" : null
 }
 
+output "seal_config" {
+  description = "KMS seal configuration (sensitive values redacted)"
+  value = var.seal.kms_key_id != "" ? {
+    type     = var.seal.type
+    region   = var.seal.region
+    kms_key_id = var.seal.kms_key_id
+  } : null
+}
+
+output "irsa_role_arn" {
+  description = "IRSA role ARN for the OpenBao service account"
+  value       = var.seal.irsa_role_arn
+}
+
 output "openbao_status" {
   description = "Status command for the OpenBao deployment"
   value       = "kubectl exec -n ${var.namespace} ${var.helm_release_name}-0 -- bao status"

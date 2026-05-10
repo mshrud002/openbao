@@ -1,7 +1,25 @@
 namespace = "openbao"
 mode      = "ha"
 
-# OpenBao configuration
+# Seal config — injected from Terraform (e.g. aws_kms_key, aws_iam_role)
+seal = {
+  type         = "awskms"
+  region       = "eu-west-1"
+  kms_key_id   = "alias/openbao-unseal"
+  irsa_role_arn = "arn:aws:iam::123456789012:role/openbao-kms"
+}
+
+# Ingress — external by default, change to internal for corporate
+ingress_enabled = false
+ingress_config = {
+  host = "bao.example.com"
+  annotations = {
+    # "alb.ingress.kubernetes.io/scheme" = "internet-facing"   # external
+    # "alb.ingress.kubernetes.io/scheme" = "internal"          # corporate
+  }
+}
+
+# Helm overrides
 values = {
   server = {
     image = {
@@ -18,7 +36,20 @@ values = {
       }
     }
   }
+  plugins = {
+    community = {
+      enabled = true
+      auth = {
+        aws   = { enabled = true }
+        azure = { enabled = true }
+        gcp   = { enabled = true }
+      }
+      secrets = {
+        aws   = { enabled = true }
+        azure = { enabled = true }
+        gcp   = { enabled = true }
+        nomad = { enabled = true }
+      }
+    }
+  }
 }
-
-# Ingress
-ingress_enabled = false

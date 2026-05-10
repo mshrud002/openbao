@@ -213,11 +213,17 @@ server:
 
   ingress:
     enabled: false
+    # For internet-facing deployments, use ingressClassName: alb (AWS) or nginx
+    # For corporate/internal deployments, switch to internal ALB or internal NGINX:
+    #   ingressClassName: nginx
+    #   annotations:
+    #     alb.ingress.kubernetes.io/scheme: internal        # AWS internal ALB
+    #     alb.ingress.kubernetes.io/target-type: ip
     ingressClassName: ""
     annotations: {}
     activeService: true
     hosts:
-      - host: openbao.local
+      - host: bao.example.com
         paths:
           - "/*"
     tls: []
@@ -316,13 +322,18 @@ plugins:
     resources: {}
 
 seal:
+  # AWS KMS for auto-unseal.
+  # Set enabled=true and provide region + kms_key_id from Terraform or your config.
+  # The IRSA role ARN should be created by Terraform and injected into the chart.
   awskms:
-    enabled: true
-    region: eu-west-1
-    kms_key_id: alias/openbao-unseal-prod
+    enabled: false
+    region: ""
+    kms_key_id: ""
     endpoint: ""
     irsaRoleArn: ""
 
+  # Alternative: provide AWS credentials directly via environment variables.
+  # These should reference Kubernetes secrets created externally (e.g. by Terraform).
   extraEnvironmentVars: []
   # - name: AWS_ACCESS_KEY_ID
   #   valueFrom:

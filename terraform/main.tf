@@ -17,6 +17,18 @@ terraform {
 }
 
 locals {
+  seal_values = var.seal.kms_key_id != "" ? {
+    seal = {
+      awskms = {
+        enabled     = true
+        region      = var.seal.region
+        kms_key_id  = var.seal.kms_key_id
+        endpoint    = var.seal.endpoint
+        irsaRoleArn = var.seal.irsa_role_arn
+      }
+    }
+  } : {}
+
   helm_values = merge(
     {
       global = {
@@ -29,6 +41,7 @@ locals {
         replicas    = var.mode == "ha" ? 3 : 1
       }
     },
+    local.seal_values,
     var.values
   )
 }
