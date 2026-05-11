@@ -26,8 +26,6 @@ Includes the full suite of [openbao-plugins](https://github.com/openbao/openbao-
 │   └── examples/complete/      # Complete example with Terraform
 ├── scripts/
 │   ├── deploy.sh               # Full deployment workflow
-│   ├── eks-oidc-auth.sh        # GitHub OIDC → AWS STS auth (CI/CD)
-│   ├── eks-iam-user-auth.sh    # IAM user credentials auth (CI/CD)
 │   ├── init-and-unseal.sh      # Initialize & unseal cluster
 │   ├── install-plugin.sh       # Runtime plugin installation
 │   └── register-plugins.sh     # Register community plugins
@@ -37,15 +35,6 @@ Includes the full suite of [openbao-plugins](https://github.com/openbao/openbao-
 ## Architecture
 
 ### Deployment Pipeline (GitHub Actions → AWS EKS)
-
-Two authentication methods are supported:
-
-| Method | Credentials | Best for |
-|--------|-------------|----------|
-| **OIDC** (default) | Short-lived tokens via `sts:AssumeRoleWithWebIdentity` | Teams with GitHub OIDC provider configured |
-| **IAM User** | Long-lived access keys stored as GitHub secrets | Quick setup, BYO IAM user, no OIDC setup |
-
-#### Option 1: OIDC (GitHub Actions → AWS STS)
 
 ```mermaid
 flowchart TD
@@ -64,29 +53,6 @@ flowchart TD
     end
     GHA -->|"OIDC_ROLE_ARN"| IAM_ROLE
 ```
-
-#### Option 2: IAM User (long-lived access keys)
-
-```mermaid
-flowchart TD
-    subgraph "GitHub"
-        GHA["GitHub Actions Runner"]
-        GHA -->|"AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY"| AWS["AWS APIs"]
-    end
-    subgraph "AWS Account"
-        AWS -->|"eks:DescribeCluster"| EKS["Amazon EKS"]
-        IAM_USER["IAM User<br/>(BYO)"] -->|"eks:DescribeCluster"| EKS
-    end
-    subgraph "Kubernetes"
-        EKS -->|"helm install/upgrade"| HELM["Helm Release: openbao"]
-        HELM --> PODS["OpenBao StatefulSet"]
-    end
-```
-
-**Required GitHub secrets:**
-- `AWS_ACCESS_KEY_ID` — IAM user access key ID
-- `AWS_SECRET_ACCESS_KEY` — IAM user secret access key
-- `EKS_CLUSTER_NAME` — target EKS cluster name
 
 ### Kubernetes Resources
 
@@ -130,16 +96,7 @@ flowchart LR
     POD1 -->|"retry_join"| POD2
 ```
 
-### KMS Auto-Unseal
-
-Auto-unseal requires AWS credentials with `kms:Decrypt`/`kms:Encrypt`/`kms:DescribeKey` permissions on the KMS key. Two approaches are supported:
-
-| Method | How it works | When to use |
-|--------|-------------|-------------|
-| **IRSA** (default) | IAM role annotated on ServiceAccount | EKS clusters with OIDC provider |
-| **IAM User** | Access keys injected via Kubernetes secret | Non-EKS clusters, BYO credentials |
-
-#### Option A: IRSA (IAM Roles for Service Accounts)
+### KMS Auto-Unseal (IRSA)
 
 ```mermaid
 flowchart TD
@@ -149,24 +106,6 @@ flowchart TD
     subgraph "Kubernetes / EKS"
         SA["ServiceAccount<br/>openbao"] -->|"annotation: role-arn"| IRSA_ROLE
         POD["OpenBao Pod"] -->|"mounts SA"| SA
-    end
-    subgraph "OpenBao"
-        CONFIG["openbao.hcl<br/>seal 'awskms'"] -->|"reads seal stanza"| BAO_SERVER["bao server"]
-        BAO_SERVER -->|"kms:Decrypt"| KMS_KEY
-        BAO_SERVER -->|"auto-unsealed"| READY["Ready for traffic"]
-    end
-    POD --> CONFIG
-```
-
-#### Option B: IAM User (via K8s secret)
-
-```mermaid
-flowchart TD
-    subgraph "AWS"
-        KMS_KEY["AWS KMS Key"]
-    end
-    subgraph "Kubernetes"
-        SECRET["K8s Secret<br/>openbao-aws-creds"] -->|"AWS_ACCESS_KEY_ID /<br/>AWS_SECRET_ACCESS_KEY"| POD["OpenBao Pod"]
     end
     subgraph "OpenBao"
         CONFIG["openbao.hcl<br/>seal 'awskms'"] -->|"reads seal stanza"| BAO_SERVER["bao server"]
@@ -322,73 +261,32 @@ module "openbao" {
 ### Helm only (manual)
 
 ```bash
-# IRSA approach
 helm install openbao ./helm/openbao \
   --set seal.awskms.enabled=true \
   --set seal.awskms.region=eu-west-1 \
   --set seal.awskms.kms_key_id=alias/openbao-unseal \
   --set seal.awskms.irsaRoleArn=arn:aws:iam::123456789012:role/openbao-kms
-
-# IAM User approach (via K8s secret)
-helm install openbao ./helm/openbao \
-  --set seal.awskms.enabled=true \
-  --set seal.awskms.region=eu-west-1 \
-  --set seal.awskms.kms_key_id=alias/openbao-unseal \
-  --set 'seal.extraEnvironmentVars[0].name=AWS_ACCESS_KEY_ID' \
-  --set 'seal.extraEnvironmentVars[0].valueFrom.secretKeyRef.name=openbao-aws-creds' \
-  --set 'seal.extraEnvironmentVars[0].valueFrom.secretKeyRef.key=access-key-id' \
-  --set 'seal.extraEnvironmentVars[1].name=AWS_SECRET_ACCESS_KEY' \
-  --set 'seal.extraEnvironmentVars[1].valueFrom.secretKeyRef.name=openbao-aws-creds' \
-  --set 'seal.extraEnvironmentVars[1].valueFrom.secretKeyRef.key=secret-access-key'
 ```
 
-### IRSA (default)
+### IRSA
 
 When `seal.awskms.irsaRoleArn` is set, the chart adds `eks.amazonaws.com/role-arn` to the ServiceAccount.
 
-```bash
-helm install openbao ./helm/openbao \
-  --set seal.awskms.enabled=true \
-  --set seal.awskms.region=eu-west-1 \
-  --set seal.awskms.kms_key_id=alias/openbao-unseal \
-  --set seal.awskms.irsaRoleArn=arn:aws:iam::123456789012:role/openbao-kms
-```
+### Direct AWS Credentials (alternative to IRSA)
 
-### IAM User (alternative to IRSA)
-
-Replace IRSA with a Kubernetes secret containing IAM user credentials:
-
-```bash
-# Create the K8s secret with IAM user credentials
-kubectl create secret generic openbao-aws-creds \
-  --from-literal=access-key-id=AKIA... \
-  --from-literal=secret-access-key=...
-
-# Deploy with extraEnvironmentVars referencing the secret
-helm install openbao ./helm/openbao \
-  --set seal.awskms.enabled=true \
-  --set seal.awskms.region=eu-west-1 \
-  --set seal.awskms.kms_key_id=alias/openbao-unseal \
-  --set 'seal.extraEnvironmentVars[0].name=AWS_ACCESS_KEY_ID' \
-  --set 'seal.extraEnvironmentVars[0].valueFrom.secretKeyRef.name=openbao-aws-creds' \
-  --set 'seal.extraEnvironmentVars[0].valueFrom.secretKeyRef.key=access-key-id' \
-  --set 'seal.extraEnvironmentVars[1].name=AWS_SECRET_ACCESS_KEY' \
-  --set 'seal.extraEnvironmentVars[1].valueFrom.secretKeyRef.name=openbao-aws-creds' \
-  --set 'seal.extraEnvironmentVars[1].valueFrom.secretKeyRef.key=secret-access-key'
-```
-
-Or via the Terraform module (see `terraform/examples/complete/terraform.tfvars.example`):
-
-```hcl
-create_irsa_resources      = false
-create_iam_user_k8s_secret = true
-iam_user_access_key_id     = var.iam_user_access_key_id        # sensitive
-iam_user_secret_access_key = var.iam_user_secret_access_key    # sensitive
-seal = {
-  type       = "awskms"
-  region     = "eu-west-1"
-  kms_key_id = aws_kms_key.existing.key_id
-}
+```yaml
+seal:
+  extraEnvironmentVars:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: aws-creds
+          key: access-key
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: aws-creds
+          key: secret-key
 ```
 
 ## Deployment Modes

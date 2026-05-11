@@ -1,4 +1,4 @@
-# Setup GitHub OIDC provider and IAM role for CI/CD via GitHub Actions.
+# Setup GitHub OIDC provider and IAM role for EKS deployment.
 # Apply this once per AWS account before running the deploy-eks workflow.
 #
 # Usage:
@@ -7,12 +7,6 @@
 #
 # After apply, add the OIDC_ROLE_ARN output as a GitHub Actions secret
 # named OIDC_ROLE_ARN (per environment).
-#
-# Alternative: IAM user for CI/CD
-#   Instead of OIDC, you can use a long-lived IAM user:
-#   1. Create an IAM user with eks:DescribeCluster permission
-#   2. Add AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY as GitHub Actions secrets
-#   3. Use scripts/eks-iam-user-auth.sh in the deploy workflow
 
 terraform {
   required_version = ">= 1.5"

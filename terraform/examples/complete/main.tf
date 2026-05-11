@@ -58,24 +58,12 @@ module "openbao" {
 
   # Seal config is auto-provisioned when create_irsa_resources = true.
   # Omit seal block entirely — KMS key and IRSA role are created by the module.
-  #
   # For BYO key/role, set create_irsa_resources = false and pass:
   # seal = {
   #   type         = "awskms"
   #   region       = "eu-west-1"
   #   kms_key_id   = aws_kms_key.existing.key_id
   #   irsa_role_arn = aws_iam_role.existing.arn
-  # }
-  #
-  # For IAM user pod-level auth (alternative to IRSA), set:
-  # create_irsa_resources      = false
-  # create_iam_user_k8s_secret = true
-  # iam_user_access_key_id     = var.iam_user_access_key_id
-  # iam_user_secret_access_key = var.iam_user_secret_access_key
-  # seal = {
-  #   type       = "awskms"
-  #   region     = "eu-west-1"
-  #   kms_key_id = aws_kms_key.existing.key_id
   # }
 
   # Additional Helm values (overrides)

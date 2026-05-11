@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Authenticate to AWS via GitHub OIDC, then configure kubectl for EKS.
 # No marketplace actions required — uses only curl + aws CLI.
-#
-# Alternative: For IAM user-based auth (long-lived access keys), use:
-#   scripts/eks-iam-user-auth.sh --cluster <name> --install
 set -euo pipefail
 
 usage() {

@@ -1,37 +1,7 @@
-# ═══════════════════════════════════════════════════════════════
-# OpenBao Terraform Example — terraform.tfvars
-# ═══════════════════════════════════════════════════════════════
-# Choose your auth approach:
-#   A) IRSA (default) — set create_irsa_resources = true
-#   B) IAM user (BYO) — set create_iam_user_k8s_secret = true
-#   C) BYO seal       — pass seal block explicitly
-#
-# For CI/CD auth (GitHub Actions), see:
-#   - OIDC:    terraform/github-oidc/main.tf
-#   - IAM user: scripts/eks-iam-user-auth.sh
-# ═══════════════════════════════════════════════════════════════
-
 namespace = "openbao"
 mode      = "ha"
 
-# ── Option A: IRSA (Terraform creates KMS key + IAM role for service account) ──
-# create_irsa_resources = true
-# eks_cluster_name      = "my-eks-cluster"
-# (omit seal block — auto-provisioned)
-
-# ── Option B: IAM user for pod-level AWS access (alternative to IRSA) ──
-# create_irsa_resources      = false
-# create_iam_user_k8s_secret = true
-# iam_user_access_key_id     = "AKIA..."
-# iam_user_secret_access_key = "..."
-# seal = {
-#   type       = "awskms"
-#   region     = "eu-west-1"
-#   kms_key_id = "alias/openbao-unseal"
-# }
-
-# ── Option C: BYO seal config (pre-existing KMS key + IRSA role) ──
-create_irsa_resources = false
+# Seal config — injected from Terraform (e.g. aws_kms_key, aws_iam_role)
 seal = {
   type         = "awskms"
   region       = "eu-west-1"

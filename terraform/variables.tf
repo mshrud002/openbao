@@ -132,23 +132,3 @@ variable "service_account_annotations" {
   type        = map(string)
   default     = {}
 }
-
-variable "iam_user_access_key_id" {
-  description = "AWS IAM user access key ID for pod-level AWS access (alternative to IRSA)"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "iam_user_secret_access_key" {
-  description = "AWS IAM user secret access key for pod-level AWS access (alternative to IRSA)"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "create_iam_user_k8s_secret" {
-  description = "Create a Kubernetes secret with IAM user credentials for pod-level AWS access"
-  type        = bool
-  default     = false
-}

@@ -324,10 +324,7 @@ plugins:
 seal:
   # AWS KMS for auto-unseal.
   # Set enabled=true and provide region + kms_key_id from Terraform or your config.
-  #
-  # Auth methods (pick one):
-  #   A) IRSA — set irsaRoleArn (EKS OIDC provider required)
-  #   B) IAM User — use extraEnvironmentVars referencing a K8s secret with AWS creds
+  # The IRSA role ARN should be created by Terraform and injected into the chart.
   awskms:
     enabled: false
     region: ""
@@ -335,16 +332,16 @@ seal:
     endpoint: ""
     irsaRoleArn: ""
 
-  # Provide AWS credentials via environment variables from Kubernetes secrets.
-  # Use this instead of irsaRoleArn when using an IAM user for pod-level AWS access.
+  # Alternative: provide AWS credentials directly via environment variables.
+  # These should reference Kubernetes secrets created externally (e.g. by Terraform).
   extraEnvironmentVars: []
   # - name: AWS_ACCESS_KEY_ID
   #   valueFrom:
   #     secretKeyRef:
-  #       name: openbao-aws-creds
-  #       key: access-key-id
+  #       name: aws-creds
+  #       key: access-key
   # - name: AWS_SECRET_ACCESS_KEY
   #   valueFrom:
   #     secretKeyRef:
-  #       name: openbao-aws-creds
-  #       key: secret-access-key
+  #       name: aws-creds
+  #       key: secret-key
