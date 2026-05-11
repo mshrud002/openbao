@@ -35,16 +35,21 @@ output "openbao_addr_external" {
 
 output "seal_config" {
   description = "KMS seal configuration (sensitive values redacted)"
-  value = var.seal.kms_key_id != "" ? {
+  value = local.kms_key_id != "" ? {
     type     = var.seal.type
-    region   = var.seal.region
-    kms_key_id = var.seal.kms_key_id
+    region   = local.seal_region
+    kms_key_id = local.kms_key_id
   } : null
+}
+
+output "kms_key_arn" {
+  description = "KMS key ARN for auto-unseal"
+  value       = var.create_irsa_resources ? aws_kms_key.openbao[0].arn : var.seal.kms_key_id
 }
 
 output "irsa_role_arn" {
   description = "IRSA role ARN for the OpenBao service account"
-  value       = var.seal.irsa_role_arn
+  value       = local.irsa_role_arn
 }
 
 output "openbao_status" {

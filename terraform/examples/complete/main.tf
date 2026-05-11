@@ -1,5 +1,9 @@
 terraform {
   required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
     helm = {
       source  = "hashicorp/helm"
       version = ">= 2.12"
@@ -15,6 +19,10 @@ terraform {
   }
 }
 
+provider "aws" {
+  region = "eu-west-1"
+}
+
 provider "helm" {
   kubernetes {
     config_path = "~/.kube/config"
@@ -25,20 +33,6 @@ provider "kubernetes" {
   config_path = "~/.kube/config"
 }
 
-# ---------------------------------------------------------------------------
-# In real deployments, the KMS key, IRSA role, and certificate ARN would be
-# created by Terraform resources (aws_kms_key, aws_iam_role, etc.) and
-# referenced here as outputs or data sources.
-# ---------------------------------------------------------------------------
-
-# data "aws_kms_key" "openbao" {
-#   key_id = "alias/openbao-unseal"
-# }
-#
-# data "aws_iam_role" "openbao_irsa" {
-#   name = "openbao-kms-role"
-# }
-
 module "openbao" {
   source = "../../terraform"
 
@@ -47,6 +41,9 @@ module "openbao" {
   create_namespace  = true
   mode             = "ha"
   chart_path       = "../../helm/openbao"
+
+  create_irsa_resources = true
+  eks_cluster_name      = "my-eks-cluster"
 
   ingress_enabled = false
   ingress_config = {
@@ -59,13 +56,15 @@ module "openbao" {
     }
   }
 
-  # Seal config — pass KMS key and IRSA role from Terraform resources
-  seal = {
-    type         = "awskms"
-    region       = "eu-west-1"
-    kms_key_id   = "alias/openbao-unseal"         # or aws_kms_key.openbao.key_id
-    irsa_role_arn = "arn:aws:iam::123456789012:role/openbao-kms"  # or aws_iam_role.openbao_irsa.arn
-  }
+  # Seal config is auto-provisioned when create_irsa_resources = true.
+  # Omit seal block entirely — KMS key and IRSA role are created by the module.
+  # For BYO key/role, set create_irsa_resources = false and pass:
+  # seal = {
+  #   type         = "awskms"
+  #   region       = "eu-west-1"
+  #   kms_key_id   = aws_kms_key.existing.key_id
+  #   irsa_role_arn = aws_iam_role.existing.arn
+  # }
 
   # Additional Helm values (overrides)
   values = {
@@ -115,4 +114,12 @@ output "openbao_service" {
 
 output "openbao_addr" {
   value = module.openbao.openbao_addr_internal
+}
+
+output "kms_key_arn" {
+  value = module.openbao.kms_key_arn
+}
+
+output "irsa_role_arn" {
+  value = module.openbao.irsa_role_arn
 }

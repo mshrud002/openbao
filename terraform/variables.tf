@@ -93,8 +93,30 @@ variable "ingress_config" {
   default = {}
 }
 
+variable "create_irsa_resources" {
+  description = "Create KMS key and IAM role for IRSA auto-unseal"
+  type        = bool
+  default     = false
+}
+
+variable "eks_cluster_name" {
+  description = "EKS cluster name (required when create_irsa_resources = true)"
+  type        = string
+  default     = ""
+}
+
+variable "kms_key_deletion_window_in_days" {
+  description = "KMS key deletion window (7-30 days)"
+  type        = number
+  default     = 7
+  validation {
+    condition     = var.kms_key_deletion_window_in_days >= 7 && var.kms_key_deletion_window_in_days <= 30
+    error_message = "KMS key deletion window must be between 7 and 30 days."
+  }
+}
+
 variable "seal" {
-  description = "KMS auto-unseal configuration"
+  description = "KMS auto-unseal configuration (not needed when create_irsa_resources = true)"
   type = object({
     type         = optional(string, "awskms")
     region       = optional(string, "")

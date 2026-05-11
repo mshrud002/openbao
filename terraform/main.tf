@@ -1,6 +1,10 @@
 terraform {
   required_version = ">= 1.5"
   required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
     helm = {
       source  = "hashicorp/helm"
       version = ">= 2.12"
@@ -12,15 +16,37 @@ terraform {
   }
 }
 
+data "aws_caller_identity" "current" {
+  count = var.create_irsa_resources ? 1 : 0
+}
+
+data "aws_region" "current" {
+  count = var.create_irsa_resources ? 1 : 0
+}
+
+data "aws_eks_cluster" "this" {
+  count = var.create_irsa_resources ? 1 : 0
+  name  = var.eks_cluster_name
+}
+
 locals {
-  seal_values = var.seal.kms_key_id != "" ? {
+  oidc_issuer_url = try(
+    replace(data.aws_eks_cluster.this[0].identity[0].oidc[0].issuer, "https://", ""),
+    ""
+  )
+
+  kms_key_id    = var.create_irsa_resources ? aws_kms_key.openbao[0].key_id : var.seal.kms_key_id
+  irsa_role_arn = var.create_irsa_resources ? aws_iam_role.openbao_irsa[0].arn : var.seal.irsa_role_arn
+  seal_region   = var.create_irsa_resources ? data.aws_region.current[0].name : var.seal.region
+
+  seal_values = local.kms_key_id != "" ? {
     seal = {
       awskms = {
         enabled     = true
-        region      = var.seal.region
-        kms_key_id  = var.seal.kms_key_id
+        region      = local.seal_region
+        kms_key_id  = local.kms_key_id
         endpoint    = var.seal.endpoint
-        irsaRoleArn = var.seal.irsa_role_arn
+        irsaRoleArn = local.irsa_role_arn
       }
     }
   } : {}
@@ -40,6 +66,75 @@ locals {
     local.seal_values,
     var.values
   )
+}
+
+resource "aws_kms_key" "openbao" {
+  count                   = var.create_irsa_resources ? 1 : 0
+  description             = "OpenBao auto-unseal key - ${var.helm_release_name}"
+  deletion_window_in_days = var.kms_key_deletion_window_in_days
+  enable_key_rotation     = true
+  tags = {
+    Name        = "${var.helm_release_name}-unseal"
+    Environment = var.namespace
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "aws_kms_alias" "openbao" {
+  count         = var.create_irsa_resources ? 1 : 0
+  name          = "alias/${var.helm_release_name}-unseal"
+  target_key_id = aws_kms_key.openbao[0].key_id
+}
+
+resource "aws_iam_role" "openbao_irsa" {
+  count = var.create_irsa_resources ? 1 : 0
+  name  = "${var.helm_release_name}-irsa-${var.namespace}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current[0].account_id}:oidc-provider/${local.oidc_issuer_url}"
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${local.oidc_issuer_url}:sub" = "system:serviceaccount:${var.namespace}:${var.helm_release_name}"
+            "${local.oidc_issuer_url}:aud" = "sts.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${var.helm_release_name}-irsa-${var.namespace}"
+    Environment = var.namespace
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "aws_iam_role_policy" "openbao_kms_access" {
+  count = var.create_irsa_resources ? 1 : 0
+  name  = "${var.helm_release_name}-kms-access"
+  role  = aws_iam_role.openbao_irsa[0].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:Encrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = aws_kms_key.openbao[0].arn
+      }
+    ]
+  })
 }
 
 resource "kubernetes_namespace_v1" "openbao" {
