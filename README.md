@@ -32,6 +32,120 @@ Includes the full suite of [openbao-plugins](https://github.com/openbao/openbao-
 └── README.md
 ```
 
+## Architecture
+
+### Deployment Pipeline (GitHub Actions → AWS EKS)
+
+```mermaid
+flowchart TD
+    subgraph "GitHub"
+        GHA["GitHub Actions Runner"] -->|"OIDC JWT"| OIDC["token.actions.githubusercontent.com"]
+        OIDC -->|"ACTIONS_ID_TOKEN_REQUEST_TOKEN"| GHA
+        GHA -->|"aws sts assume-role-with-web-identity"| AWS_STS["AWS STS"]
+    end
+    subgraph "AWS Account"
+        AWS_STS -->|"temp credentials"| EKS["Amazon EKS"]
+        IAM_ROLE["IAM Role<br/>github-oidc-{env}-openbao"] -->|"eks:DescribeCluster"| EKS
+    end
+    subgraph "Kubernetes"
+        EKS -->|"helm install/upgrade"| HELM["Helm Release: openbao"]
+        HELM --> PODS["OpenBao StatefulSet"]
+    end
+    GHA -->|"OIDC_ROLE_ARN"| IAM_ROLE
+```
+
+### Kubernetes Resources
+
+```mermaid
+flowchart TD
+    HELM_RELEASE["Helm Release<br/>openbao"] --> SA["ServiceAccount<br/>openbao"]
+    HELM_RELEASE --> CM["ConfigMap<br/>openbao-config"]
+    HELM_RELEASE --> STS["StatefulSet<br/>openbao"]
+    HELM_RELEASE --> SVC["Service<br/>openbao:8200"]
+    HELM_RELEASE --> SVC_INT["Service (Headless)<br/>openbao-internal"]
+    HELM_RELEASE --> INGRESS["Ingress (optional)"]
+    HELM_RELEASE --> SVC_MON["ServiceMonitor (optional)"]
+    HELM_RELEASE --> INJECTOR["Agent Injector (optional)"]
+
+    subgraph "Pod (openbao-N)"
+        INIT_PLUGIN["initContainer: plugin-download"] --> MAIN["main: bao server"]
+        INIT_COPY["initContainer: plugin-copy"] --> MAIN
+        INIT_IMG["initContainer: plugin-image (opt)"] --> MAIN
+        MAIN --> VOL_DATA["PVC: /openbao/data"]
+        MAIN --> VOL_AUDIT["PVC: /vault/logs"]
+        MAIN --> VOL_PLUGINS["emptyDir: /vault/plugins"]
+    end
+
+    SA -.->|"IRSA annotation"| MAIN
+    CM -.->|"openbao.hcl"| MAIN
+```
+
+### Network Flow
+
+```mermaid
+flowchart LR
+    USER["User<br/>HTTPS"] --> INGRESS["AWS ALB / NGINX<br/>Ingress"]
+    INGRESS -->|"host: bao.example.com"| SVC["Service: openbao<br/>ClusterIP :8200"]
+    SVC --> POD0["Pod: openbao-0<br/>:8200 API + UI"]
+    SVC --> POD1["Pod: openbao-1<br/>:8200 API + UI"]
+    SVC --> POD2["Pod: openbao-2<br/>:8200 API + UI"]
+    SVC_INT["Service: openbao-internal<br/>(headless)"] -->|"Raft gossip :8201"| POD0
+    SVC_INT -->|"Raft gossip :8201"| POD1
+    SVC_INT -->|"Raft gossip :8201"| POD2
+    POD0 -->|"retry_join"| POD1
+    POD1 -->|"retry_join"| POD2
+```
+
+### KMS Auto-Unseal (IRSA)
+
+```mermaid
+flowchart TD
+    subgraph "AWS"
+        KMS_KEY["AWS KMS Key"] -->|"kms:Decrypt / Encrypt"| IRSA_ROLE["IAM Role (IRSA)"]
+    end
+    subgraph "Kubernetes / EKS"
+        SA["ServiceAccount<br/>openbao"] -->|"annotation: role-arn"| IRSA_ROLE
+        POD["OpenBao Pod"] -->|"mounts SA"| SA
+    end
+    subgraph "OpenBao"
+        CONFIG["openbao.hcl<br/>seal 'awskms'"] -->|"reads seal stanza"| BAO_SERVER["bao server"]
+        BAO_SERVER -->|"kms:Decrypt"| KMS_KEY
+        BAO_SERVER -->|"auto-unsealed"| READY["Ready for traffic"]
+    end
+    POD --> CONFIG
+```
+
+### Plugin System
+
+```mermaid
+flowchart TD
+    subgraph "initContainers"
+        COMMUNITY["plugin-download<br/>curlimages/curl"] -->|"curl GitHub releases"| ARCHIVES["openbao-plugins/releases"]
+        ARCHIVES -->|"extract .tar.gz"| PLUGIN_DIR["/vault/plugins/ (emptyDir)"]
+        CONFIGMAP["plugin-copy"] -->|"copy from ConfigMap"| PLUGIN_DIR
+        SIDECAR["plugin-image"] -->|"copy from image"| PLUGIN_DIR
+    end
+    subgraph "Post-Deploy"
+        PLUGIN_DIR --> REGISTER["register-plugins.sh"]
+        REGISTER -->|"bao plugin register"| PLUGIN_REG["Plugin Registered"]
+        PLUGIN_REG -->|"bao auth / secrets enable"| PLUGIN_MOUNTED["Plugin Active"]
+    end
+```
+
+### Init & Unseal Flow
+
+```mermaid
+flowchart TD
+    DEPLOY["Helm install done"] --> WAIT["Wait pod ready"]
+    WAIT --> CHECK{"Already initialized?"}
+    CHECK -->|"No"| INIT["bao operator init<br/>5 keys, threshold 3"]
+    CHECK -->|"Yes"| DONE["Done"]
+    INIT --> KEYS["openbao-init-{ns}.json"]
+    KEYS --> UNSEAL["For each pod:<br/>bao operator unseal x3"]
+    UNSEAL --> VERIFY["Verify unsealed"]
+    VERIFY --> READY["OpenBao Ready"]
+```
+
 ## Quick Start
 
 ### Prerequisites
