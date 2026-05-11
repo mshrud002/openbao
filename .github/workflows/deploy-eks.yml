@@ -38,7 +38,6 @@ on:
       - "scripts/**"
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -62,11 +61,13 @@ jobs:
           chmod 755 /usr/local/bin/kubectl
           kubectl version --client
 
-      - name: Authenticate to AWS via OIDC and deploy
+      - name: Authenticate to AWS via IAM user and deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          chmod +x scripts/eks-oidc-auth.sh
-          ./scripts/eks-oidc-auth.sh \
-            --role-arn "${{ secrets.OIDC_ROLE_ARN }}" \
+          chmod +x scripts/eks-iam-user-auth.sh
+          ./scripts/eks-iam-user-auth.sh \
             --cluster "${{ secrets.EKS_CLUSTER_NAME }}" \
             --region "${{ env.AWS_REGION }}" \
             --namespace "openbao-${{ github.event.inputs.environment || 'dev' }}" \

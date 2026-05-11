@@ -39,6 +39,33 @@ locals {
   irsa_role_arn = var.create_irsa_resources ? aws_iam_role.openbao_irsa[0].arn : var.seal.irsa_role_arn
   seal_region   = var.create_irsa_resources ? data.aws_region.current[0].name : var.seal.region
 
+  use_iam_user_k8s_secret = var.create_iam_user_k8s_secret && var.iam_user_access_key_id != "" && var.iam_user_secret_access_key != ""
+
+  iam_user_extra_env_vars = local.use_iam_user_k8s_secret ? {
+    seal = {
+      extraEnvironmentVars = [
+        {
+          name = "AWS_ACCESS_KEY_ID"
+          valueFrom = {
+            secretKeyRef = {
+              name = "${var.helm_release_name}-aws-creds"
+              key  = "access-key-id"
+            }
+          }
+        },
+        {
+          name = "AWS_SECRET_ACCESS_KEY"
+          valueFrom = {
+            secretKeyRef = {
+              name = "${var.helm_release_name}-aws-creds"
+              key  = "secret-access-key"
+            }
+          }
+        }
+      ]
+    }
+  } : {}
+
   seal_values = local.kms_key_id != "" ? {
     seal = {
       awskms = {
@@ -46,7 +73,7 @@ locals {
         region      = local.seal_region
         kms_key_id  = local.kms_key_id
         endpoint    = var.seal.endpoint
-        irsaRoleArn = local.irsa_role_arn
+        irsaRoleArn = local.use_iam_user_k8s_secret ? "" : local.irsa_role_arn
       }
     }
   } : {}
@@ -64,6 +91,7 @@ locals {
       }
     },
     local.seal_values,
+    local.iam_user_extra_env_vars,
     var.values
   )
 }
@@ -137,6 +165,23 @@ resource "aws_iam_role_policy" "openbao_kms_access" {
   })
 }
 
+resource "kubernetes_secret_v1" "aws_creds" {
+  count = local.use_iam_user_k8s_secret ? 1 : 0
+  metadata {
+    name      = "${var.helm_release_name}-aws-creds"
+    namespace = var.namespace
+    labels = {
+      app     = "openbao"
+      managed = "terraform"
+    }
+  }
+  data = {
+    "access-key-id"     = var.iam_user_access_key_id
+    "secret-access-key" = var.iam_user_secret_access_key
+  }
+  type = "Opaque"
+}
+
 resource "kubernetes_namespace_v1" "openbao" {
   count = var.create_namespace ? 1 : 0
   metadata {
@@ -158,7 +203,10 @@ resource "helm_release" "openbao" {
   wait       = true
   timeout    = 600
 
-  depends_on = [kubernetes_namespace_v1.openbao]
+  depends_on = [
+    kubernetes_namespace_v1.openbao,
+    kubernetes_secret_v1.aws_creds
+  ]
 
   values = [yamlencode(local.helm_values)]
 }
