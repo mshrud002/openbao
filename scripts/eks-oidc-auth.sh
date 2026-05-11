@@ -103,6 +103,12 @@ export AWS_DEFAULT_REGION="$REGION"
 
 echo "  Credentials obtained (expires in 3600s)"
 
+# Persist credentials for subsequent workflow steps
+aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+aws configure set aws_session_token "$AWS_SESSION_TOKEN"
+aws configure set region "$REGION"
+
 # ------------------------------------------------------------------
 # Step 3: Configure kubectl for EKS
 # ------------------------------------------------------------------
