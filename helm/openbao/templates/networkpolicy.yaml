@@ -1,0 +1,39 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "openbao.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "openbao.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    {{- if or .Values.networkPolicy.ingress .Values.server.service.enabled }}
+    - Ingress
+    {{- end }}
+    {{- if .Values.networkPolicy.egress }}
+    - Egress
+    {{- end }}
+  {{- if or .Values.networkPolicy.ingress .Values.server.service.enabled }}
+  ingress:
+    {{- with .Values.networkPolicy.ingress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.server.service.enabled }}
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    {{- end }}
+  {{- end }}
+  {{- with .Values.networkPolicy.egress }}
+  egress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
