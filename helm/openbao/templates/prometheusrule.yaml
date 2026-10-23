@@ -1,0 +1,11 @@
+{{- if false }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "openbao.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+spec:
+  groups: []
+{{- end }}
