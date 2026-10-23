@@ -12,7 +12,17 @@ metadata:
 spec:
   endpoints:
     - port: http
-      path: /v1/sys/metrics
+      path: {{ .Values.monitoring.serviceMonitor.path | default "/v1/sys/metrics" }}
+      {{- if .Values.monitoring.serviceMonitor.params }}
+      params:
+        {{- range $key, $values := .Values.monitoring.serviceMonitor.params }}
+        {{ $key }}:
+          {{- toYaml $values | nindent 10 }}
+        {{- end }}
+      {{- else }}
+      params:
+        format: ["prometheus"]
+      {{- end }}
       {{- with .Values.monitoring.serviceMonitor.interval }}
       interval: {{ . }}
       {{- end }}

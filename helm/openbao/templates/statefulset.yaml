@@ -39,6 +39,9 @@ spec:
       {{- if .Values.server.hostNetwork }}
       hostNetwork: {{ .Values.server.hostNetwork }}
       {{- end }}
+      {{- if .Values.server.shareProcessNamespace }}
+      shareProcessNamespace: true
+      {{- end }}
       {{- if .Values.server.dnsConfig }}
       dnsConfig:
         {{- toYaml .Values.server.dnsConfig | nindent 8 }}
@@ -80,7 +83,7 @@ spec:
       {{- $hasCommunityPlugins := .Values.plugins.community.enabled }}
       {{- $hasPlugins := or $hasCustomPlugins $hasCommunityPlugins }}
       {{- $openbaoUID := .Values.server.openbaoUID | default 100 }}
-      {{- if $hasPlugins }}
+      {{- if or $hasPlugins .Values.server.extraInitContainers }}
       initContainers:
         {{- if .Values.plugins.extra }}
         - name: plugin-copy
@@ -170,6 +173,9 @@ spec:
             - name: plugins
               mountPath: /vault/plugins
         {{- end }}
+        {{- with .Values.server.extraInitContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
 
       containers:
@@ -234,6 +240,28 @@ spec:
             {{- if .Values.server.extraEnvironmentVars }}
             {{- toYaml .Values.server.extraEnvironmentVars | nindent 12 }}
             {{- end }}
+            {{- if .Values.seal.azurekv.enabled }}
+            - name: AZURE_TENANT_ID
+              value: "{{ .Values.seal.azurekv.tenant_id }}"
+            - name: AZURE_CLIENT_ID
+              value: "{{ .Values.seal.azurekv.client_id }}"
+            {{- if .Values.seal.azurekv.client_secret }}
+            - name: AZURE_CLIENT_SECRET
+              value: "{{ .Values.seal.azurekv.client_secret }}"
+            {{- end }}
+            - name: AZURE_ENVIRONMENT
+              value: "{{ .Values.seal.azurekv.environment }}"
+            {{- end }}
+            {{- if .Values.seal.gcpkms.enabled }}
+            {{- if .Values.seal.gcpkms.credentials }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "{{ .Values.seal.gcpkms.credentials }}"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.seal.transit.enabled }}
+            - name: VAULT_TOKEN
+              value: "{{ .Values.seal.transit.token }}"
+            {{- end }}
             {{- if .Values.seal.extraEnvironmentVars }}
             {{- toYaml .Values.seal.extraEnvironmentVars | nindent 12 }}
             {{- end }}
@@ -269,6 +297,11 @@ spec:
             - name: audit
               mountPath: /vault/logs
             {{- end }}
+            {{- if or (and (eq $mode "standalone") .Values.server.standalone.tls.enabled) (and (eq $mode "ha") .Values.server.ha.tls.enabled) }}
+            - name: tls
+              mountPath: /openbao/tls
+              readOnly: true
+            {{- end }}
             {{- if .Values.server.extraVolumeMounts }}
             {{- toYaml .Values.server.extraVolumeMounts | nindent 12 }}
             {{- end }}
@@ -296,6 +329,9 @@ spec:
           resources:
             {{- toYaml .Values.plugins.sidecar.resources | nindent 12 }}
         {{- end }}
+        {{- with .Values.server.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
 
       volumes:
         - name: config
@@ -310,6 +346,12 @@ spec:
         {{- if $hasPlugins }}
         - name: plugins
           emptyDir: {}
+        {{- end }}
+        {{- if or (and (eq $mode "standalone") .Values.server.standalone.tls.enabled) (and (eq $mode "ha") .Values.server.ha.tls.enabled) }}
+        - name: tls
+          secret:
+            secretName: {{ include "openbao.fullname" . }}-tls
+            optional: true
         {{- end }}
 
   volumeClaimTemplates:
