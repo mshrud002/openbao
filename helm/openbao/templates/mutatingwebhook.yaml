@@ -1,0 +1,31 @@
+{{- if .Values.injector.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-injector
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent-injector
+webhooks:
+  - name: agent-injector.openbao.org
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.injector.webhook.failurePolicy | default "Ignore" }}
+    timeoutSeconds: {{ .Values.injector.webhook.timeoutSeconds | default 30 }}
+    clientConfig:
+      service:
+        name: {{ include "openbao.fullname" . }}-agent-injector-svc
+        namespace: {{ .Release.Namespace }}
+        path: "/mutate"
+        port: 443
+      {{- if .Values.injector.certs.caBundle }}
+      caBundle: {{ .Values.injector.certs.caBundle | quote }}
+      {{- end }}
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    namespaceSelector: {}
+    objectSelector: {}
+{{- end }}

@@ -389,6 +389,7 @@ injector:
   replicaCount: 1
   leaderElect: true
   logLevel: info
+  logFormat: standard
   metrics:
     enabled: false
     port: 8080
@@ -396,17 +397,173 @@ injector:
     enabled: true
     type: ClusterIP
     port: 443
+    annotations: {}
   webhook:
     failurePolicy: Ignore
     timeoutSeconds: 30
+    path: "/mutate"
   agentImage:
     registry: quay.io
     repository: openbao/openbao
     tag: ""
   authPath: auth/kubernetes
+  authRole: ""
   certs:
     secretName: ""
     caBundle: ""
+  extraEnv: []
+  extraArgs: ""
+
+# OpenBao Agent (standalone sidecar/init)
+agent:
+  enabled: false
+  image:
+    registry: quay.io
+    repository: openbao/openbao
+    tag: ""
+    pullPolicy: IfNotPresent
+  logLevel: info
+  logFormat: standard
+  auth:
+    method: kubernetes
+    mountPath: auth/kubernetes
+    role: openbao-agent
+    tokenTtl: 3600
+  config: |
+    auto_auth {
+      method "kubernetes" {
+        mount_path = "{{ .Values.agent.auth.mountPath }}"
+        config = {
+          role = "{{ .Values.agent.auth.role }}"
+        }
+      }
+      sink "file" {
+        config = {
+          path = "/home/agent/.token"
+        }
+      }
+    }
+    cache {
+      use_auto_auth_token = true
+    }
+    listener "tcp" {
+      address = "127.0.0.1:8100"
+      tls_disable = true
+    }
+    template_config {
+      static_secret_render_interval = "5m"
+      exit_on_retry_failure = false
+    }
+    vault {
+      address = "http://{{ include \"openbao.fullname\" . }}.{{ .Release.Namespace }}.svc.cluster.local:8200"
+    }
+  templates: []
+  # - source: /etc/agent/templates/secret.tpl
+  #   destination: /etc/secrets/secret.json
+  #   perms: "0440"
+  #   command: []
+  extraEnv: []
+  extraVolumeMounts: []
+  resources: {}
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+# Auth configuration
+auth:
+  kubernetes:
+    enabled: true
+    mountPath: auth/kubernetes
+    role: openbao-k8s
+    boundServiceAccountNames: ["*"]
+    boundServiceAccountNamespaces: ["{{ .Release.Namespace }}"]
+    tokenTtl: 3600
+    tokenMaxTtl: 86400
+    policies: ["default"]
+    audience: ""
+  oidc:
+    enabled: false
+    mountPath: oidc
+    discoveryUrl: ""
+    clientId: ""
+    clientSecret: ""
+    clientSecretSecretName: ""
+    clientSecretSecretKey: "client-secret"
+    defaultRole: "default"
+    allowedRedirectUris:
+      - "https://bao.example.com/ui/vault/auth/oidc/oidc/callback"
+      - "http://localhost:8250/oidc/callback"
+    boundAudiences: []
+    oidcScopes: ["openid", "profile", "email", "groups"]
+    groupsClaim: "groups"
+    userClaim: "email"
+    roleType: "oidc"
+    providerConfig: {}
+    roles: []
+  jwt:
+    enabled: false
+    mountPath: jwt
+    jwksUrl: ""
+    jwtSupportedAlgs: ["RS256"]
+    defaultRole: "default"
+    boundAudiences: []
+    userClaim: "sub"
+    groupsClaim: "groups"
+    tokenTtl: 3600
+    roles: []
+
+# Multi-tenancy / Namespaces (OpenBao namespaces)
+namespaces:
+  enabled: false
+  # List of namespaces to create
+  tenants: []
+  # - name: tenant-a
+  #   description: "Tenant A"
+  #   policies: ["tenant-a-admin"]
+  #   groups: []
+  #   auth:
+  #     oidc:
+  #       roles: []
+  # Create root policies for tenants
+  createPolicies: true
+  policyTemplates:
+    admin: |
+      path "*" { capabilities = ["create", "read", "update", "delete", "list", "sudo"] }
+    readOnly: |
+      path "*/data/*" { capabilities = ["read", "list"] }
+      path "*/metadata/*" { capabilities = ["read", "list"] }
+    developer: |
+      path "{{ .Namespace }}/data/*" { capabilities = ["create", "read", "update", "delete", "list"] }
+      path "{{ .Namespace }}/metadata/*" { capabilities = ["create", "read", "update", "delete", "list"] }
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior: {}
+
+# Snapshot CronJob for automated backups
+snapshot:
+  cronjob:
+    enabled: false
+    schedule: "0 2 * * *"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    image:
+      repository: bitnami/kubectl
+      tag: latest
+      pullPolicy: IfNotPresent
+    s3:
+      enabled: false
+      bucket: ""
+      region: ""
+      secretName: ""
+    resources: {}
+
 
 plugins:
   extra: {}
