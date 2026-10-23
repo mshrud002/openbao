@@ -1,0 +1,19 @@
+{{- if .Values.agent.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openbao.fullname" . }}-agent-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+data:
+  agent.hcl: |
+{{ tpl .Values.agent.config . | indent 4 }}
+{{- if .Values.agent.templates }}
+  {{- range $i, $tpl := .Values.agent.templates }}
+  template-{{ $i }}.tpl: |
+{{ $tpl.source | indent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

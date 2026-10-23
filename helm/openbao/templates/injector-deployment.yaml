@@ -6,18 +6,18 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "openbao.labels" . | nindent 4 }}
-    component: agent-injector
+    app.kubernetes.io/component: agent-injector
 spec:
-  replicas: 1
+  replicas: {{ .Values.injector.replicaCount | default 1 }}
   selector:
     matchLabels:
       {{- include "openbao.selectorLabels" . | nindent 6 }}
-      component: agent-injector
+      app.kubernetes.io/component: agent-injector
   template:
     metadata:
       labels:
         {{- include "openbao.selectorLabels" . | nindent 8 }}
-        component: agent-injector
+        app.kubernetes.io/component: agent-injector
       annotations:
         {{- with .Values.server.annotations }}
         {{- toYaml . | nindent 8 }}
@@ -33,7 +33,10 @@ spec:
           args:
             - -address={{ include "openbao.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:8200
             - -tls-skip-verify=true
-            - -log-level={{ .Values.server.logLevel | default "info" }}
+            - -log-level={{ .Values.injector.logLevel | default .Values.server.logLevel | default "info" }}
+            {{- with .Values.injector.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           env:
             - name: BAO_ADDR
               value: http://{{ include "openbao.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:8200
@@ -43,10 +46,28 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: AGENT_INJECT_VAULT_AUTH_PATH
+              value: {{ .Values.injector.authPath | quote }}
+            {{- if .Values.injector.authRole }}
+            - name: AGENT_INJECT_VAULT_AUTH_ROLE
+              value: {{ .Values.injector.authRole | quote }}
+            {{- end }}
+            {{- if .Values.injector.agentImage.repository }}
+            - name: AGENT_INJECT_AGENT_IMAGE
+              value: "{{ .Values.injector.agentImage.registry }}/{{ .Values.injector.agentImage.repository }}:{{ .Values.injector.agentImage.tag | default .Chart.AppVersion }}"
+            {{- end }}
+            {{- with .Values.injector.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: webhook
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.injector.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.injector.metrics.port }}
+              protocol: TCP
+            {{- end }}
           resources:
             {{- toYaml .Values.injector.resources | nindent 12 }}
 ---
@@ -57,58 +78,16 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "openbao.labels" . | nindent 4 }}
-    component: agent-injector
+    app.kubernetes.io/component: agent-injector
 spec:
   type: ClusterIP
   ports:
     - name: webhook
-      port: 443
+      port: {{ .Values.injector.service.port | default 443 }}
       targetPort: 8080
       protocol: TCP
   selector:
     {{- include "openbao.selectorLabels" . | nindent 4 }}
-    component: agent-injector
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "openbao.fullname" . }}-agent-injector
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "openbao.labels" . | nindent 4 }}
-    component: agent-injector
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "openbao.fullname" . }}-agent-injector
-  labels:
-    {{- include "openbao.labels" . | nindent 4 }}
-    component: agent-injector
-rules:
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch", "patch", "update"]
-  - apiGroups: ["admissionregistration.k8s.io"]
-    resources: ["mutatingwebhookconfigurations"]
-    verbs: ["get", "list", "watch", "patch", "update", "create"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ include "openbao.fullname" . }}-agent-injector
-  labels:
-    {{- include "openbao.labels" . | nindent 4 }}
-    component: agent-injector
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ include "openbao.fullname" . }}-agent-injector
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "openbao.fullname" . }}-agent-injector
-    namespace: {{ .Release.Namespace }}
+    app.kubernetes.io/component: agent-injector
 {{- end }}
+

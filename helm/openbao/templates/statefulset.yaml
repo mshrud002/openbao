@@ -329,6 +329,39 @@ spec:
           resources:
             {{- toYaml .Values.plugins.sidecar.resources | nindent 12 }}
         {{- end }}
+        {{- if .Values.agent.enabled }}
+        - name: openbao-agent
+          image: {{ .Values.agent.image.registry }}/{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
+          command:
+            - "/bin/sh"
+            - "-ec"
+            - |
+              exec bao agent -config=/etc/agent/agent.hcl -log-level={{ .Values.agent.logLevel | default "info" }} -log-format={{ .Values.agent.logFormat | default "standard" }}
+          env:
+            - name: BAO_ADDR
+              value: "http://127.0.0.1:8200"
+            {{- with .Values.agent.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: agent-config
+              mountPath: /etc/agent
+              readOnly: true
+            - name: agent-home
+              mountPath: /home/agent
+            {{- with .Values.agent.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- range $i, $tpl := .Values.agent.templates }}
+            - name: agent-templates
+              mountPath: /etc/agent/templates/template-{{ $i }}.tpl
+              subPath: template-{{ $i }}.tpl
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+        {{- end }}
         {{- with .Values.server.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -345,6 +378,20 @@ spec:
         {{- end }}
         {{- if $hasPlugins }}
         - name: plugins
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.agent.enabled }}
+        - name: agent-config
+          configMap:
+            name: {{ include "openbao.fullname" . }}-agent-config
+            defaultMode: 0444
+        {{- if .Values.agent.templates }}
+        - name: agent-templates
+          configMap:
+            name: {{ include "openbao.fullname" . }}-agent-config
+            defaultMode: 0444
+        {{- end }}
+        - name: agent-home
           emptyDir: {}
         {{- end }}
         {{- if or (and (eq $mode "standalone") .Values.server.standalone.tls.enabled) (and (eq $mode "ha") .Values.server.ha.tls.enabled) }}

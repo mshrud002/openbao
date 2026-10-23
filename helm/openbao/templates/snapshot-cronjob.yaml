@@ -1,0 +1,59 @@
+{{- if .Values.snapshot.cronjob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "openbao.fullname" . }}-snapshot
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.snapshot.cronjob.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.snapshot.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.snapshot.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "openbao.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "openbao.serviceAccountName" . }}
+          containers:
+            - name: snapshot
+              image: {{ .Values.snapshot.cronjob.image.repository }}:{{ .Values.snapshot.cronjob.image.tag }}
+              imagePullPolicy: {{ .Values.snapshot.cronjob.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  NAMESPACE={{ .Release.Namespace }}
+                  POD={{ include "openbao.fullname" . }}-0
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  SNAP=/tmp/raft-${TIMESTAMP}.snap
+                  echo "Taking snapshot from ${POD}"
+                  kubectl exec -n ${NAMESPACE} ${POD} -c openbao -- bao operator raft snapshot save /tmp/raft.snap
+                  kubectl cp -n ${NAMESPACE} ${POD}:/tmp/raft.snap ${SNAP} -c openbao
+                  echo "Snapshot saved: ${SNAP}"
+                  {{- if .Values.snapshot.cronjob.s3.enabled }}
+                  {{- if .Values.snapshot.cronjob.s3.secretName }}
+                  export AWS_ACCESS_KEY_ID=$(cat /aws/credentials/aws_access_key_id 2>/dev/null || echo "")
+                  export AWS_SECRET_ACCESS_KEY=$(cat /aws/credentials/aws_secret_access_key 2>/dev/null || echo "")
+                  {{- end }}
+                  aws s3 cp ${SNAP} s3://{{ .Values.snapshot.cronjob.s3.bucket }}/raft-snapshot-${TIMESTAMP}.snap --region {{ .Values.snapshot.cronjob.s3.region }}
+                  {{- end }}
+              {{- if and .Values.snapshot.cronjob.s3.enabled .Values.snapshot.cronjob.s3.secretName }}
+              volumeMounts:
+                - name: aws-creds
+                  mountPath: /aws/credentials
+                  readOnly: true
+              {{- end }}
+              resources:
+                {{- toYaml .Values.snapshot.cronjob.resources | nindent 16 }}
+          {{- if and .Values.snapshot.cronjob.s3.enabled .Values.snapshot.cronjob.s3.secretName }}
+          volumes:
+            - name: aws-creds
+              secret:
+                secretName: {{ .Values.snapshot.cronjob.s3.secretName }}
+          {{- end }}
+{{- end }}
