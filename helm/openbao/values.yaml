@@ -546,6 +546,15 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80
   behavior: {}
 
+# Injector autoscaling
+injector:
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
 # Snapshot CronJob for automated backups
 snapshot:
   cronjob:
@@ -563,6 +572,59 @@ snapshot:
       region: ""
       secretName: ""
     resources: {}
+    retentionDays: 7
+
+# TLS / cert-manager
+tls:
+  certManager:
+    enabled: false
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+    duration: 2160h
+    renewBefore: 360h
+
+# Gateway API
+gateway:
+  enabled: false
+  gatewayClassName: ""
+  name: ""
+  listeners: []
+  routes:
+    http: []
+  tls:
+    enabled: false
+    certificateRefs: []
+
+# Audit log shipping
+audit:
+  shipper:
+    enabled: false
+    image:
+      repository: timberio/vector
+      tag: 0.39.0-debian
+      pullPolicy: IfNotPresent
+    config: |
+      [sources.openbao_audit]
+      type = "file"
+      include = ["/vault/logs/audit.log"]
+      read_from = "beginning"
+      [sinks.console]
+      type = "console"
+      inputs = ["openbao_audit"]
+      encoding.codec = "json"
+    resources: {}
+    extraVolumeMounts: []
+
+# Grafana dashboard
+grafana:
+  dashboard:
+    enabled: false
+    labels:
+      grafana_dashboard: "1"
+    annotations: {}
+    name: ""
+
 
 
 plugins:

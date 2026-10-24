@@ -362,6 +362,26 @@ spec:
           resources:
             {{- toYaml .Values.agent.resources | nindent 12 }}
         {{- end }}
+        {{- if .Values.audit.shipper.enabled }}
+        - name: audit-shipper
+          image: {{ .Values.audit.shipper.image.repository }}:{{ .Values.audit.shipper.image.tag }}
+          imagePullPolicy: {{ .Values.audit.shipper.image.pullPolicy }}
+          args:
+            - --config
+            - /etc/vector/vector.yaml
+          volumeMounts:
+            - name: audit
+              mountPath: /vault/logs
+              readOnly: true
+            - name: audit-shipper-config
+              mountPath: /etc/vector
+              readOnly: true
+            {{- with .Values.audit.shipper.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.audit.shipper.resources | nindent 12 }}
+        {{- end }}
         {{- with .Values.server.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -393,6 +413,12 @@ spec:
         {{- end }}
         - name: agent-home
           emptyDir: {}
+        {{- end }}
+        {{- if .Values.audit.shipper.enabled }}
+        - name: audit-shipper-config
+          configMap:
+            name: {{ include "openbao.fullname" . }}-audit-shipper
+            defaultMode: 0444
         {{- end }}
         {{- if or (and (eq $mode "standalone") .Values.server.standalone.tls.enabled) (and (eq $mode "ha") .Values.server.ha.tls.enabled) }}
         - name: tls

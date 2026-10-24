@@ -1,0 +1,12 @@
+{{- if .Values.audit.shipper.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openbao.fullname" . }}-audit-shipper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openbao.labels" . | nindent 4 }}
+data:
+  vector.yaml: |
+{{ .Values.audit.shipper.config | indent 4 }}
+{{- end }}
