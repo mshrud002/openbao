@@ -204,23 +204,22 @@ server:
     replicas: 3
     antiAffinity: true
 
+    tls:
+      enabled: false
+      certFile: /openbao/tls/tls.crt
+      keyFile: /openbao/tls/tls.key
+      clientCaFile: ""
+      requireClientCert: false
     raft:
       enabled: true
       setNodeId: true
       snapshotThreshold: 8192
       snapshotInterval: "30s"
-
-      tls:
-        enabled: false
-        certFile: /openbao/tls/tls.crt
-        keyFile: /openbao/tls/tls.key
-        clientCaFile: ""
-        requireClientCert: false
       config: |
         ui = true
 
         listener "tcp" {
-          {{- if .Values.server.ha.tls.enabled }}
+          {{- if and .Values.server.ha.tls .Values.server.ha.tls.enabled }}
           tls_disable = 0
           tls_cert_file = "{{ .Values.server.ha.tls.certFile }}"
           tls_key_file  = "{{ .Values.server.ha.tls.keyFile }}"
@@ -242,7 +241,7 @@ server:
           snapshot_interval = "{{ .Values.server.ha.raft.snapshotInterval }}"
           {{- range $i := until (int .Values.server.ha.replicas) }}
           retry_join {
-            leader_api_addr = "http{{ if $.Values.server.ha.tls.enabled }}s{{ end }}://{{ $.Release.Name }}-{{ $i }}.{{ $.Release.Name }}-internal:8200"
+            leader_api_addr = "http{{ if and $.Values.server.ha.tls $.Values.server.ha.tls.enabled }}s{{ end }}://{{ $.Release.Name }}-{{ $i }}.{{ $.Release.Name }}-internal:8200"
           }
           {{- end }}
         }
