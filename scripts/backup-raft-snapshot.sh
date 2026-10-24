@@ -23,7 +23,7 @@ if [[ -n "$S3_BUCKET" ]]; then
     aws s3 cp "$SNAPSHOT_FILE" "s3://${S3_BUCKET}/raft-snapshot-${TIMESTAMP}.snap"
     echo "Upload complete"
     if [[ "$RETENTION_DAYS" -gt 0 ]]; then
-      CUTOFF=$(date -d "${RETENTION_DAYS} days ago" +%Y%m%d 2>/dev/null || date -v-${RETENTION_DAYS}d +%Y%m%d 2>/dev/null || echo "")
+      CUTOFF=$(date -d "${RETENTION_DAYS} days ago" +%Y%m%d 2>/dev/null || date -v-"${RETENTION_DAYS}"d +%Y%m%d 2>/dev/null || echo "")
       if [[ -n "$CUTOFF" ]]; then
         aws s3 ls "s3://${S3_BUCKET}/" | awk '{print $4}' | grep raft-snapshot | while read -r f; do
           DATE=$(echo "$f" | grep -oP '\d{8}' | head -1 || true)
@@ -41,6 +41,6 @@ fi
 
 # Local retention
 if [[ "$RETENTION_DAYS" -gt 0 ]]; then
-  find "$SNAPSHOT_DIR" -name "raft-snapshot-*.snap" -mtime +$RETENTION_DAYS -delete 2>/dev/null || true
+  find "$SNAPSHOT_DIR" -name "raft-snapshot-*.snap" -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 fi
 

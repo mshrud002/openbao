@@ -27,17 +27,17 @@ K8S_CA_CERT="${K8S_CA_CERT:-/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 K8S_TOKEN="${K8S_TOKEN:-/var/run/secrets/kubernetes.io/serviceaccount/token}"
 
 if [[ -f "$K8S_CA_CERT" && -f "$K8S_TOKEN" ]]; then
-  bao write ${AUTH_PATH}/config \
+  bao write "${AUTH_PATH}/config" \
     kubernetes_host="${K8S_HOST}" \
-    kubernetes_ca_cert=@${K8S_CA_CERT} \
-    token_reviewer_jwt=@${K8S_TOKEN}
+    kubernetes_ca_cert=@"${K8S_CA_CERT}" \
+    token_reviewer_jwt=@"${K8S_TOKEN}"
 else
   echo "Using in-cluster defaults for kubernetes auth config"
-  bao write ${AUTH_PATH}/config kubernetes_host="${K8S_HOST}" || true
+  bao write "${AUTH_PATH}/config" kubernetes_host="${K8S_HOST}" || true
 fi
 
 echo "Creating role ${ROLE_NAME}..."
-bao write ${AUTH_PATH}/role/${ROLE_NAME} \
+bao write "${AUTH_PATH}/role/${ROLE_NAME}" \
   bound_service_account_names="${SERVICE_ACCOUNTS}" \
   bound_service_account_namespaces="${SERVICE_NAMESPACES}" \
   policies="${POLICIES}" \

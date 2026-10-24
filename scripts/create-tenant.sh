@@ -7,7 +7,6 @@ set -euo pipefail
 NAMESPACE="${NAMESPACE:-openbao}"
 BAO_ADDR="${BAO_ADDR:-}"
 TENANT_NAME="${1:-}"
-DESCRIPTION="${2:-Tenant $TENANT_NAME}"
 POLICIES="${POLICIES:-${TENANT_NAME}-admin}"
 CREATE_NAMESPACE="${CREATE_NAMESPACE:-true}"
 ENABLE_KV="${ENABLE_KV:-true}"
@@ -45,7 +44,7 @@ fi
 # Create tenant admin policy
 POLICY_NAME="${TENANT_NAME}-admin"
 echo "Creating policy: ${POLICY_NAME}"
-cat > /tmp/${POLICY_NAME}.hcl <<EOF
+cat > "/tmp/${POLICY_NAME}.hcl" <<EOF
 # Admin policy for tenant ${TENANT_NAME}
 path "${TENANT_NAME}/*" {
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
@@ -58,7 +57,7 @@ path "auth/token/*" {
 }
 EOF
 
-bao policy write "${POLICY_NAME}" /tmp/${POLICY_NAME}.hcl
+bao policy write "${POLICY_NAME}" "/tmp/${POLICY_NAME}.hcl"
 
 # Enable KV secrets engine under tenant path if using path-based tenancy
 if [[ "$CREATE_NAMESPACE" != "true" && "$ENABLE_KV" == "true" ]]; then

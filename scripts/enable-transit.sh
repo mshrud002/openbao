@@ -9,5 +9,5 @@ if [[ -z "$BAO_ADDR" ]]; then echo "BAO_ADDR required"; exit 1; fi
 export BAO_ADDR
 
 bao secrets list 2>/dev/null | grep -q "^${TRANSIT_PATH}/" || bao secrets enable -path="${TRANSIT_PATH}" transit
-bao write -f ${TRANSIT_PATH}/keys/${KEY_NAME}
+bao write -f "${TRANSIT_PATH}/keys/${KEY_NAME}"
 echo "Transit enabled with key ${KEY_NAME}"

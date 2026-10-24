@@ -32,14 +32,14 @@ echo "Enabling OIDC auth at ${AUTH_PATH}..."
 bao auth list 2>/dev/null | grep -q "^${AUTH_PATH}/" || bao auth enable -path="${AUTH_PATH}" oidc
 
 echo "Configuring OIDC..."
-bao write auth/${AUTH_PATH}/config \
+bao write "auth/${AUTH_PATH}/config" \
   oidc_discovery_url="${DISCOVERY_URL}" \
   oidc_client_id="${CLIENT_ID}" \
   oidc_client_secret="${CLIENT_SECRET}" \
   default_role="${DEFAULT_ROLE}"
 
 echo "Creating OIDC role ${DEFAULT_ROLE}..."
-bao write auth/${AUTH_PATH}/role/${DEFAULT_ROLE} \
+bao write "auth/${AUTH_PATH}/role/${DEFAULT_ROLE}" \
   allowed_redirect_uris="${ALLOWED_REDIRECT_URIS}" \
   oidc_scopes="${OIDC_SCOPES}" \
   groups_claim="${GROUPS_CLAIM}" \

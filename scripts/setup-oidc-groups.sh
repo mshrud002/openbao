@@ -17,7 +17,7 @@ export BAO_ADDR
 # Create external group
 GROUP_ID=$(bao write -field=id identity/group name="${GROUP_NAME}" type="external" policies="${POLICIES}" 2>/dev/null || echo "")
 if [[ -z "$GROUP_ID" ]]; then
-  GROUP_ID=$(bao read -field=id identity/group/name/${GROUP_NAME} 2>/dev/null || echo "")
+  GROUP_ID=$(bao read -field=id "identity/group/name/${GROUP_NAME}" 2>/dev/null || echo "")
 fi
 
 # Get OIDC auth mount accessor

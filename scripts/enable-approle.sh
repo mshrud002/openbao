@@ -17,14 +17,14 @@ echo "Enabling approle..."
 bao auth list 2>/dev/null | grep -q "^approle/" || bao auth enable approle
 
 echo "Creating role ${ROLE_NAME}..."
-bao write auth/approle/role/${ROLE_NAME} \
+bao write "auth/approle/role/${ROLE_NAME}" \
   token_policies="${POLICIES}" \
   token_ttl="${TOKEN_TTL}" \
   token_max_ttl="${TOKEN_MAX_TTL}" \
   secret_id_ttl="${SECRET_ID_TTL}"
 
-ROLE_ID=$(bao read -field=role_id auth/approle/role/${ROLE_NAME}/role-id)
-SECRET_ID=$(bao write -field=secret_id -f auth/approle/role/${ROLE_NAME}/secret-id)
+ROLE_ID=$(bao read -field=role_id "auth/approle/role/${ROLE_NAME}/role-id")
+SECRET_ID=$(bao write -field=secret_id -f "auth/approle/role/${ROLE_NAME}/secret-id")
 
 echo "ROLE_ID=${ROLE_ID}"
 echo "SECRET_ID=${SECRET_ID}"
