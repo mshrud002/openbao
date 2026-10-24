@@ -420,11 +420,13 @@ spec:
             name: {{ include "openbao.fullname" . }}-audit-shipper
             defaultMode: 0444
         {{- end }}
+        {{- if or (and (eq $mode "standalone") .Values.server.standalone.tls) (and (eq $mode "ha") .Values.server.ha.tls) }}
         {{- if or (and (eq $mode "standalone") .Values.server.standalone.tls.enabled) (and (eq $mode "ha") .Values.server.ha.tls.enabled) }}
         - name: tls
           secret:
             secretName: {{ include "openbao.fullname" . }}-tls
             optional: true
+        {{- end }}
         {{- end }}
 
   volumeClaimTemplates:
